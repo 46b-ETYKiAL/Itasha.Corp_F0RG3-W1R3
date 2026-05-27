@@ -1,0 +1,66 @@
+name: CodeQL
+
+# Free GHAS code scanning for the installer framework. Languages present in the
+# repo that CodeQL supports: Python (the test/validation scripts) and GitHub
+# Actions (workflow security). Shell + PowerShell are NOT CodeQL-supported —
+# they are covered by shellcheck / PSScriptAnalyzer in ci.yml and by zizmor /
+# actionlint for the workflow layer.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "27 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: python
+            build-mode: none
+          - language: actions
+            build-mode: none
+    steps:
+      - name: Harden the runner (egress audit)
+        # step-security/harden-runner@v2.19.4
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        # actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        # github/codeql-action/init@v3.30.3
+        uses: github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      - name: Perform CodeQL Analysis
+        # github/codeql-action/analyze@v3.30.3
+        uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3
+        with:
+          category: "/language:${{ matrix.language }}"

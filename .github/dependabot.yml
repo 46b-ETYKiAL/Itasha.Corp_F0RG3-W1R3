@@ -1,0 +1,19 @@
+# Dependabot for F0RG3-W1R3. Place at .github/dependabot.yml.
+# The framework's Python scripts are stdlib-only today, so there is no pip
+# ecosystem entry yet. The actively-updated dependency surface is the pinned
+# GitHub Actions SHAs — Dependabot keeps those current AND rewrites the version
+# comment alongside the SHA, preserving the pin-by-SHA discipline.
+#
+# Add a `- package-ecosystem: pip` block here if/when a requirements.txt or
+# pyproject.toml lands.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "ci"
+    labels: [dependencies, github-actions]

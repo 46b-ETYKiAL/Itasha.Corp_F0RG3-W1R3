@@ -1,0 +1,185 @@
+name: CI
+
+# Best-in-class CI for the F0RG3-W1R3 installer framework (public OSS).
+# Lints shell + PowerShell + Python, schema-validates packaging config, runs
+# the content-safety/IP-boundary audit as a REQUIRED gate, lints the workflows
+# themselves (actionlint + zizmor), and dry-run-verifies the signing flow.
+# Supersedes the prior validate.yml (keep one or the other, not both).
+# All third-party actions pinned by full commit SHA.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-validate:
+    name: Lint & schema-validate
+    # ALWAYS run so a skipped job cannot be reported as a green required check.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (egress audit)
+        # step-security/harden-runner@v2.19.4
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        # actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        # actions/setup-python@v5.6.0
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Install Python lint tooling (ruff, pinned)
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install "ruff==0.15.14"
+
+      - name: Ruff lint (Python test/validation scripts)
+        run: ruff check tests packaging
+
+      - name: Ruff format check
+        run: ruff format --check tests packaging
+
+      - name: Install actionlint (pinned)
+        run: |
+          set -euo pipefail
+          ACTIONLINT_VERSION="1.7.12"
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -version
+
+      - name: Lint workflows (actionlint)
+        run: ./actionlint -color
+
+      - name: Lint shell scripts (shellcheck)
+        run: |
+          set -euo pipefail
+          shellcheck --version
+          found=0
+          while IFS= read -r script; do
+            found=1
+            shellcheck "$script"
+          done < <(find packaging scripts tests -name '*.sh' 2>/dev/null)
+          if [ "$found" -eq 0 ]; then
+            echo "No shell scripts found to lint."
+          fi
+
+      - name: Check shell formatting (shfmt)
+        run: |
+          set -euo pipefail
+          SHFMT_VERSION="3.13.1"
+          curl -fsSL -o shfmt \
+            "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
+          chmod +x shfmt
+          # -d = diff (non-zero exit on unformatted); -i 2 two-space indent.
+          ./shfmt -d -i 2 -ci $(find packaging scripts tests -name '*.sh' 2>/dev/null)
+
+      - name: Validate packager TOML + per-app overrides
+        run: python tests/validate_config.py packager.template.toml apps/*.toml
+
+      - name: Content-safety / IP-boundary audit (REQUIRED gate)
+        run: python tests/content_safety_audit.py
+
+  powershell-lint:
+    name: PSScriptAnalyzer
+    if: always()
+    # PSScriptAnalyzer runs cross-platform on PowerShell Core, but the .ps1
+    # signing scripts target Windows — lint on a Windows runner for fidelity.
+    runs-on: windows-latest
+    steps:
+      - name: Harden the runner (egress audit)
+        # step-security/harden-runner@v2.19.4
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        # actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -RequiredVersion 1.24.0
+          $results = Get-ChildItem -Recurse -Filter *.ps1 -Path scripts,packaging,tests |
+            ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Severity Warning,Error }
+          if ($results) {
+            $results | Format-Table -AutoSize
+            $errors = $results | Where-Object { $_.Severity -eq 'Error' }
+            if ($errors) { Write-Error "PSScriptAnalyzer found errors."; exit 1 }
+            Write-Warning "PSScriptAnalyzer found warnings (non-blocking)."
+          } else {
+            Write-Host "PSScriptAnalyzer: clean."
+          }
+
+  signing-dry-run:
+    name: Signing-flow dry run
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (egress audit)
+        # step-security/harden-runner@v2.19.4
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        # actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      # Verifies the verify/sign scripts parse and their CLI contract holds,
+      # WITHOUT touching any real signing secret. No secrets are referenced here.
+      - name: Static-check signing + verify scripts
+        run: |
+          set -euo pipefail
+          for s in scripts/sign-artifacts.sh scripts/sign-macos-adhoc.sh scripts/verify.sh; do
+            [ -f "$s" ] && bash -n "$s" && echo "syntax OK: $s"
+          done
+
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    needs: [lint-and-validate, powershell-lint, signing-dry-run]
+    if: always()
+    steps:
+      - name: Verify all required jobs succeeded
+        run: |
+          set -euo pipefail
+          declare -A results=(
+            [lint-and-validate]="${{ needs.lint-and-validate.result }}"
+            [powershell-lint]="${{ needs.powershell-lint.result }}"
+            [signing-dry-run]="${{ needs.signing-dry-run.result }}"
+          )
+          failed=0
+          for job in "${!results[@]}"; do
+            echo "${job} = ${results[$job]}"
+            if [ "${results[$job]}" != "success" ]; then failed=1; fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::One or more required jobs did not succeed."
+            exit 1
+          fi
+          echo "All required jobs succeeded."

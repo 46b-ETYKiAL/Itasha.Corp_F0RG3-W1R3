@@ -1,0 +1,63 @@
+name: Workflow Security
+
+# zizmor — static analysis for GitHub Actions workflow security (template
+# injection, excessive permissions, unpinned actions, dangerous triggers,
+# self-hosted-runner risks). This is the OSS-published equivalent of the
+# monorepo's in-house `gha_workflow_audit`. The public repos cannot import the
+# internal module, so the public, pip-installable zizmor is the right tool here.
+# Results upload to the Security tab as SARIF.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: zizmor workflow audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Harden the runner (egress audit)
+        # step-security/harden-runner@v2.19.4
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        # actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        # actions/setup-python@v5.6.0
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Install zizmor (pinned)
+        run: pip install "zizmor==1.25.2"
+
+      - name: Run zizmor (SARIF)
+        # GITHUB_TOKEN lets zizmor query the audited repo's metadata.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: zizmor --format sarif --output zizmor.sarif . || true
+
+      - name: Upload zizmor SARIF
+        # github/codeql-action/upload-sarif@v3.30.3
+        uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor

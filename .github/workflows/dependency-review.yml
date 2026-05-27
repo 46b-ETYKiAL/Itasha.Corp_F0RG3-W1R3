@@ -1,0 +1,42 @@
+name: Dependency Review
+
+# Per-PR dependency-delta gate. For the installer framework the only
+# dependency-graph-tracked ecosystem today is GitHub Actions (the workflows'
+# own pinned action deps); the Python scripts are stdlib-only (tomllib, re,
+# pathlib) so there is no requirements.txt / pyproject to scan yet. If a
+# Python dependency manifest is added later, this action picks it up
+# automatically with no edit. Free for public repos.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Harden the runner (egress audit)
+        # step-security/harden-runner@v2.19.4
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        # actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Dependency Review
+        # actions/dependency-review-action@v5.0.0
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: always
