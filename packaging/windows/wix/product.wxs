@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  product.wxs — RESERVED enterprise MSI definition (WiX v6 / WiX Toolset 6).
+
+  This is the reserved Group-Policy / Intune deployment track. NSIS (via
+  cargo-packager) is the PRIMARY branded installer; this MSI is preserved (not
+  dropped) for enterprise managed-deployment scenarios. See docs/adr/.
+
+  Per-machine install to <ProgramFiles>\Itasha.Corp\<AppFolder> (D4) — matches
+  the NSIS install target. Properties below are substituted by build-wix.ps1
+  from the per-app override:
+    APP_PRODUCT_NAME   product display name (e.g. C0PL4ND)
+    APP_VERSION        4-part-or-3-part version (e.g. 0.1.0)
+    APP_MANUFACTURER   "Itasha.Corp"
+    APP_UPGRADE_CODE   stable per-app GUID (NEVER changes across versions)
+    APP_INSTALL_SUBDIR install folder under the company root (e.g. C0PL4ND)
+    APP_BINARY_NAME    main binary file name (e.g. c0pl4nd.exe)
+    APP_BINARY_PATH    resolved absolute path to the compiled binary input
+
+  WiX v6 namespace. Built with `wix build` (WiX Toolset 6). The
+  WixToolset.UI.wixext extension version MUST match the wix.exe toolset major
+  version — see the build script + README for the windows-latest v3.14.1 lesson.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="$(APP_PRODUCT_NAME)"
+           Manufacturer="$(APP_MANUFACTURER)"
+           Version="$(APP_VERSION)"
+           UpgradeCode="$(APP_UPGRADE_CODE)"
+           InstallerVersion="500"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <!-- Clean major-upgrade: replace any older version, block downgrades. -->
+    <MajorUpgrade
+        AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ARP metadata: InstallLocation + icon (can't-find-app avoidance). -->
+    <Property Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Icon Id="AppIcon" SourceFile="$(APP_BINARY_PATH)" />
+
+    <!-- Install tree: <ProgramFiles>\Itasha.Corp\<AppFolder> (perMachine, D4). -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="CompanyFolder" Name="$(APP_MANUFACTURER)">
+        <Directory Id="INSTALLFOLDER" Name="$(APP_INSTALL_SUBDIR)" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Start Menu folder (default ON, mirrors the NSIS D-spec). -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppMenuFolder" Name="$(APP_MANUFACTURER)" />
+    </StandardDirectory>
+
+    <!-- The single compiled binary + its Start Menu shortcut. -->
+    <ComponentGroup Id="AppComponents" Directory="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="*">
+        <File Id="MainExe"
+              Source="$(APP_BINARY_PATH)"
+              Name="$(APP_BINARY_NAME)"
+              KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Component Id="StartMenuShortcut" Directory="AppMenuFolder" Guid="*">
+      <Shortcut Id="AppStartMenuShortcut"
+                Name="$(APP_PRODUCT_NAME)"
+                Target="[INSTALLFOLDER]$(APP_BINARY_NAME)"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveAppMenuFolder" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\$(APP_MANUFACTURER)\$(APP_PRODUCT_NAME)"
+                     Name="installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Feature Id="MainFeature" Title="$(APP_PRODUCT_NAME)" Level="1">
+      <ComponentGroupRef Id="AppComponents" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+    <!-- Branded WixUI dialog set (WixToolset.UI.wixext — version-matched). -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="packaging/windows/wix/license.rtf" />
+
+  </Package>
+</Wix>

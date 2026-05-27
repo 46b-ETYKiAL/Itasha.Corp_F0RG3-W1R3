@@ -1,0 +1,25 @@
+# winget installer manifest (template) — Itasha.Corp C0PL4ND
+#
+# Schema: https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+# This is a TEMPLATE. The ${...} placeholders are filled by CI on release:
+#   ${VERSION}            — the release version (the tag minus the leading v)
+#   ${INSTALLER_URL}      — the GitHub Release download URL of the signed .exe
+#   ${INSTALLER_SHA256}   — sha256 of that artifact (CI computes from the signed
+#                           file to avoid the WezTerm #7713 hash-drift footgun)
+#
+# Hashes are NEVER hand-edited: the CI release job substitutes them from the
+# checksum.sha256 of the actually-uploaded signed installer.
+PackageIdentifier: ItashaCorp.C0PL4ND
+PackageVersion: ${VERSION}
+InstallerType: nullsoft   # NSIS (cargo-packager primary Windows installer)
+Scope: machine            # perMachine install (D4)
+InstallModes:
+  - interactive
+  - silent                # NSIS /S
+  - silentWithProgress
+Installers:
+  - Architecture: x64
+    InstallerUrl: ${INSTALLER_URL}
+    InstallerSha256: ${INSTALLER_SHA256}
+ManifestType: installer
+ManifestVersion: 1.6.0

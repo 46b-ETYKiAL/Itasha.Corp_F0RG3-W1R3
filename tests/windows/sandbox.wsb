@@ -1,0 +1,34 @@
+<!--
+================================================================================
+ sandbox.wsb — Windows Sandbox config for disposable installer testing
+================================================================================
+ Windows Sandbox is a throwaway, isolated Windows desktop that resets on close
+ (Windows 10/11 Pro/Enterprise; enable "Windows Sandbox" optional feature).
+ Running the installer matrix inside it makes the uninstall residue-diff
+ meaningful (a polluted host would hide leftover state) and never touches the
+ developer's real machine.
+
+ EDIT the HostFolder path below to the absolute path of this framework checkout
+ on your host, then double-click this .wsb file. The sandbox maps the folder
+ read-only and opens an elevated PowerShell ready to run:
+
+   pwsh C:\framework\tests\windows\matrix.ps1 -Installer C:\framework\dist\<setup>.exe -Scenario all
+
+ The sandbox is disposable: closing the window discards all state. No data
+ leaves the host; the mapped folder is read-only.
+================================================================================
+-->
+<Configuration>
+  <MappedFolders>
+    <MappedFolder>
+      <!-- EDIT THIS to your host checkout path: -->
+      <HostFolder>C:\path\to\itasha-installer</HostFolder>
+      <SandboxFolder>C:\framework</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>powershell -NoExit -Command "Write-Host 'Installer test sandbox ready. Run: pwsh C:\framework\tests\windows\matrix.ps1 -Installer &lt;path&gt; -Scenario all'"</Command>
+  </LogonCommand>
+  <Networking>Default</Networking>
+</Configuration>

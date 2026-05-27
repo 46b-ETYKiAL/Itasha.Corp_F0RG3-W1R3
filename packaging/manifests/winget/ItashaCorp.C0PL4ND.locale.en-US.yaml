@@ -1,0 +1,18 @@
+# winget default-locale manifest (template) — Itasha.Corp C0PL4ND
+# Schema: https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: ItashaCorp.C0PL4ND
+PackageVersion: ${VERSION}
+PackageLocale: en-US
+Publisher: Itasha.Corp
+PublisherUrl: https://github.com/itasha-corp
+PackageName: C0PL4ND
+PackageUrl: https://github.com/itasha-corp/c0pl4nd
+License: MIT OR Apache-2.0
+ShortDescription: Fast, cross-platform terminal emulator
+Description: C0PL4ND is a GPU-accelerated, cross-platform terminal emulator from Itasha.Corp.
+Tags:
+  - terminal
+  - terminal-emulator
+  - cross-platform
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

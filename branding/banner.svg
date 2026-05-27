@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 548" width="1280" height="548">
+  <defs>
+    <pattern id="scanlines" patternUnits="userSpaceOnUse" width="4" height="4">
+      <line x1="0" y1="0" x2="4" y2="0" stroke="#fff" stroke-width="0.5" opacity="0.15"/>
+    </pattern>
+    <radialGradient id="vignette" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="transparent"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.4)"/>
+    </radialGradient>
+    <filter id="phosphor"><feGaussianBlur stdDeviation="0.8"/></filter>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <style>
+    @keyframes sweep { 0% { transform: translateY(0); } 100% { transform: translateY(500px); } }
+    @keyframes flicker { 0%,96%,100% { opacity: 1; } 97% { opacity: 0.97; } 98% { opacity: 0.99; } }
+    @keyframes signalBroadcast { 0% { opacity: 0.8; stroke-dashoffset: 20; } 100% { opacity: 0.2; stroke-dashoffset: 0; } }
+    @keyframes endpointBlink { 0%,100% { opacity: 0.9; } 50% { opacity: 0.3; } }
+    @keyframes bootReveal { 0% { opacity: 0; } 100% { opacity: 0.9; } }
+    @keyframes heartbeat { 0%,100% { r: 3; opacity: 0.5; } 15% { r: 4; opacity: 0.9; } 30% { r: 3; opacity: 0.5; } 45% { r: 3.5; opacity: 0.8; } 60% { r: 3; opacity: 0.5; } }
+    @keyframes edgeGlow { 0% { stroke-dashoffset: 3500; } 100% { stroke-dashoffset: 0; } }
+    @keyframes phosphorBloom { 0%,100% { opacity: 0; } 50% { opacity: 0.015; } }
+    @keyframes curBlink { 0%,50% { opacity: 1; } 51%,100% { opacity: 0; } }
+    text { font-family: 'SF Mono','Fira Code','Cascadia Code','JetBrains Mono',Consolas,monospace; }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+  </style>
+
+  <!-- Outer bezel -->
+  <rect x="0" y="0" width="1280" height="548" rx="18" ry="18" fill="#111118" stroke="#2a2833" stroke-width="2"/>
+  <!-- Inner bezel -->
+  <rect x="12" y="12" width="1256" height="524" rx="12" ry="12" fill="#18181f"/>
+  <!-- Screen -->
+  <rect x="24" y="24" width="1232" height="500" rx="6" ry="6" fill="#08060d"/>
+  <rect x="24" y="24" width="1232" height="500" rx="6" ry="6" fill="url(#scanlines)"/>
+  <rect x="24" y="24" width="1232" height="500" rx="6" ry="6" fill="url(#vignette)"/>
+
+  <!-- Edge glow + scanline sweep + phosphor bloom -->
+  <rect x="24" y="24" width="1232" height="500" rx="6" ry="6" fill="none" stroke="#00e5ff" stroke-width="1" opacity="0.06" stroke-dasharray="20,3480" style="animation: edgeGlow 12s linear infinite;"/>
+  <rect x="24" y="24" width="1232" height="2" fill="#00e5ff" opacity="0.03" style="animation: sweep 10s linear infinite;"/>
+  <rect x="24" y="24" width="1232" height="500" rx="6" ry="6" fill="white" opacity="0" style="animation: phosphorBloom 8s ease-in-out infinite;"/>
+
+  <g style="animation: flicker 6s infinite;">
+    <!-- House header + framework name -->
+    <text x="640" y="78" text-anchor="middle" fill="#5a5869" font-size="11" letter-spacing="6" filter="url(#phosphor)">I T A S H A . C O R P</text>
+    <text x="640" y="126" text-anchor="middle" fill="#00e5ff" font-size="40" font-weight="bold" letter-spacing="10" filter="url(#glow)">F 0 R G 3 - W 1 R 3</text>
+    <text x="640" y="152" text-anchor="middle" fill="#a020ff" font-size="12" letter-spacing="5" filter="url(#phosphor)">ONE CONFIG · EVERY PLATFORM · BRANDED INSTALLERS</text>
+
+    <!-- Packaging sequence (cross-platform forge) -->
+    <g fill="#00e5ff" font-size="13" filter="url(#phosphor)" opacity="0.9">
+      <text x="60" y="210">forge.wire ─────────────────────────</text>
+      <text x="60" y="240" style="animation: bootReveal 0.3s ease-out 0.2s both;">&gt; template.merge(app.override)</text>
+      <text x="470" y="240" fill="#01fe36">[ OK ]</text>
+      <text x="60" y="268" style="animation: bootReveal 0.3s ease-out 0.5s both;">&gt; package.windows(nsis)</text>
+      <text x="470" y="268" fill="#01fe36">[ OK ]</text>
+      <text x="60" y="296" style="animation: bootReveal 0.3s ease-out 0.8s both;">&gt; package.macos(dmg)</text>
+      <text x="470" y="296" fill="#01fe36">[ OK ]</text>
+      <text x="60" y="324" style="animation: bootReveal 0.3s ease-out 1.1s both;">&gt; package.linux(appimage,deb)</text>
+      <text x="470" y="324" fill="#01fe36">[ OK ]</text>
+      <text x="60" y="352" style="animation: bootReveal 0.3s ease-out 1.4s both;">&gt; sign.staple.checksum()</text>
+      <text x="470" y="352" fill="#01fe36">[ OK ]</text>
+      <text x="60" y="380">───────────────────────────────────</text>
+      <text x="60" y="420">forge@wired:~$ wire --ship</text>
+      <rect x="318" y="408" width="11" height="16" fill="#00e5ff" style="animation: curBlink 1.1s step-end infinite;"/>
+    </g>
+    <text x="60" y="458" fill="#5a5869" font-size="11" letter-spacing="2" filter="url(#phosphor)">binaries in · installers out</text>
+
+    <!-- Unique element: the forge bus — one source line fanning out to 3 OS endpoints -->
+    <g transform="translate(840, 196)">
+      <line x1="60" y1="0" x2="60" y2="210" stroke="#00e5ff" stroke-width="2.5" filter="url(#glow)"/>
+      <circle cx="60" cy="0" r="4" fill="#00e5ff" opacity="0.9" filter="url(#glow)"/>
+      <!-- Akira-red signal arc off the top -->
+      <path d="M 68 -4 Q 86 -18 70 -34" fill="none" stroke="#ff0040" stroke-width="1.5" opacity="0.8" filter="url(#glow)"/>
+
+      <line x1="60" y1="40" x2="210" y2="40" stroke="#00e5ff" stroke-width="1.5" opacity="0.9" stroke-dasharray="6,3" style="animation: signalBroadcast 1.5s linear infinite;"/>
+      <circle cx="210" cy="40" r="5" fill="none" stroke="#00e5ff" stroke-width="1.5" style="animation: endpointBlink 2s ease-in-out infinite;"/>
+      <circle cx="210" cy="40" r="2" fill="#00e5ff" style="animation: endpointBlink 2s ease-in-out infinite;"/>
+      <text x="222" y="44" fill="#5a5869" font-size="9" opacity="0.8">WIN/NSIS</text>
+
+      <line x1="60" y1="90" x2="190" y2="90" stroke="#e020ff" stroke-width="1.5" opacity="0.7" stroke-dasharray="6,3" style="animation: signalBroadcast 2s linear infinite;"/>
+      <circle cx="190" cy="90" r="5" fill="none" stroke="#e020ff" stroke-width="1.5" style="animation: endpointBlink 2s ease-in-out 0.4s infinite;"/>
+      <circle cx="190" cy="90" r="2" fill="#e020ff" style="animation: endpointBlink 2s ease-in-out 0.4s infinite;"/>
+      <text x="202" y="94" fill="#5a5869" font-size="9" opacity="0.8">MAC/DMG</text>
+
+      <line x1="60" y1="140" x2="170" y2="140" stroke="#00ffb3" stroke-width="1.5" opacity="0.6" stroke-dasharray="6,3" style="animation: signalBroadcast 2.5s linear infinite;"/>
+      <circle cx="170" cy="140" r="5" fill="none" stroke="#00ffb3" stroke-width="1.5" style="animation: endpointBlink 2s ease-in-out 0.8s infinite;"/>
+      <circle cx="170" cy="140" r="2" fill="#00ffb3" style="animation: endpointBlink 2s ease-in-out 0.8s infinite;"/>
+      <text x="182" y="144" fill="#5a5869" font-size="9" opacity="0.8">LINUX/APPIMG</text>
+
+      <text x="20" y="232" fill="#5a5869" font-size="8">MIT OR Apache-2.0</text>
+      <!-- kanji 配布 (distribution) -->
+      <text x="120" y="180" fill="#a020ff" font-size="34" opacity="0.18" font-family="'Noto Sans JP',sans-serif">配布</text>
+    </g>
+  </g>
+
+  <!-- Corner brackets -->
+  <path d="M 40,40 L 40,70 M 40,40 L 70,40" stroke="#00e5ff" stroke-width="1.5" fill="none" opacity="0.1"/>
+  <path d="M 1240,40 L 1240,70 M 1240,40 L 1210,40" stroke="#00e5ff" stroke-width="1.5" fill="none" opacity="0.1"/>
+  <path d="M 40,510 L 40,480 M 40,510 L 70,510" stroke="#00e5ff" stroke-width="1.5" fill="none" opacity="0.1"/>
+  <path d="M 1240,510 L 1240,480 M 1240,510 L 1210,510" stroke="#00e5ff" stroke-width="1.5" fill="none" opacity="0.1"/>
+
+  <!-- Status dots -->
+  <circle cx="50" cy="505" r="3" fill="#01fe36" opacity="0.5" style="animation: heartbeat 2s ease-in-out infinite;"/>
+  <circle cx="62" cy="505" r="3" fill="#00e5ff" opacity="0.4"/>
+  <circle cx="74" cy="505" r="3" fill="#5a5869" opacity="0.3"/>
+
+  <!-- Bezel labels + power LED -->
+  <text x="40" y="542" font-size="9" fill="#4a4859" letter-spacing="2">ITASHA.CORP</text>
+  <text x="1200" y="542" text-anchor="end" font-size="9" fill="#4a4859">CRT-F0RG3W1R3</text>
+  <circle cx="1232" cy="534" r="6" fill="#01fe36" opacity="0.3"/>
+  <circle cx="1232" cy="534" r="4" fill="#01fe36" opacity="1.0"/>
+</svg>

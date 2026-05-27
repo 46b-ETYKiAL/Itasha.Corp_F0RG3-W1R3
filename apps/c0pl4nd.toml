@@ -1,0 +1,26 @@
+# ============================================================================
+# Per-app override: C0PL4ND terminal (first consumer of the framework)
+# Merges over packager.template.toml. Keep this SMALL — only what differs.
+# Resolved Windows install dir = windows_install_root + install_subdir
+#   = "C:\Program Files\Itasha.Corp" + "C0PL4ND"
+#   = "C:\Program Files\Itasha.Corp\C0PL4ND"   (D4 target)
+# ============================================================================
+
+[itasha.app]
+product_name = "C0PL4ND"
+identifier = "corp.itasha.c0pl4nd"
+description = "Fast, cross-platform terminal emulator"
+long_description = "C0PL4ND is a GPU-accelerated, cross-platform terminal emulator from Itasha.Corp."
+homepage = "https://github.com/itasha-corp/c0pl4nd"
+install_subdir = "C0PL4ND"
+# Compiled binary consumed as a build input (never vendored source).
+binary = "c0pl4nd"
+icon_ico = "branding/c0pl4nd/icon.ico"
+icon_png = "branding/c0pl4nd/icon-256.png"
+icon_icns = "branding/c0pl4nd/icon.icns"
+# Targets this app ships on.
+formats = ["nsis", "dmg", "appimage", "deb"]
+# Linux .deb dependency line for the GUI runtime.
+deb_depends = ["libc6", "libxkbcommon0", "libwayland-client0", "libfontconfig1"]
+# Freedesktop .desktop entry for Linux menu integration (packaging/linux/).
+desktop_file = "c0pl4nd.desktop"

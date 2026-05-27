@@ -1,0 +1,290 @@
+name: Release
+
+# Tag-gated cross-platform installer release.
+#
+# Triggered ONLY by a version tag (v*) — NOT on every push, to contain
+# GitHub Actions minutes (quota_ceilings). For each OS it:
+#   1. builds the installer via the build wrapper (scripts/build.{sh,ps1});
+#   2. signs (Windows signtool / macOS Developer ID) when the platform's
+#      signing secrets are present, else builds UNSIGNED with a LOUD notice;
+#   3. (macOS) notarizes + staples;
+#   4. emits checksum.sha256;
+#   5. uploads the artifacts.
+#
+# SECURITY:
+#   * Every third-party Action is SHA-pinned (tj-actions Mar-2025 lesson).
+#   * GITHUB_TOKEN is least-privilege per job (read by default; the publish
+#     job alone gets contents: write to attach release assets).
+#   * All signing material is referenced BY NAME from secrets — never literal.
+#   * Signing is GATED on secret presence; it is never faked.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Per-app override to package (apps/<app>.toml)"
+        required: true
+        default: "c0pl4nd"
+
+# Least-privilege default for all jobs; the publish job widens to write.
+permissions:
+  contents: read
+
+concurrency:
+  # Single-fire per tag so parallel tag pushes cannot race the release.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_NAME: ${{ github.event.inputs.app || 'c0pl4nd' }}
+  CARGO_PACKAGER_VERSION: "0.11.8"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build matrix — one build+sign job per OS on its native runner.
+  # `if: always()` so a conditional cell can never be reported as a green
+  # required check while having silently skipped (merge-queue-check-gating).
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.os }}
+    if: always()
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      # actions/checkout@v4.2.2
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # actions/setup-python@v5.3.0
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: "3.12"
+
+      # dtolnay/rust-toolchain@stable (pinned commit)
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb2c1ce8ea046b1c8c75b2
+        with:
+          toolchain: stable
+
+      - name: Install cargo-packager (pinned, locked)
+        shell: bash
+        run: cargo install cargo-packager --version "${CARGO_PACKAGER_VERSION}" --locked
+
+      - name: Install minisign (free, cross-platform signing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ runner.os }}" in
+            Linux)   sudo apt-get update && sudo apt-get install -y minisign ;;
+            macOS)   brew install minisign ;;
+            Windows) choco install minisign -y --no-progress ;;
+          esac
+          minisign -v || echo "::warning::minisign version probe non-zero (continuing)"
+
+      # The compiled app binary is consumed as a BUILD INPUT, never vendored.
+      # In a real release this step downloads the signed app's release binary
+      # (binary-input-contract.md). Here it documents the contract; the build
+      # wrapper fails loudly if no binary is supplied.
+      - name: Resolve app binary input
+        id: binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ITASHA_BINARY_PATH:-}" ]; then
+            echo "::notice::No ITASHA_BINARY_PATH supplied — running config dry-run."
+            echo "dry_run=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "dry_run=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- Windows build ---
+      - name: Build installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERT_THUMBPRINT: ${{ secrets.WINDOWS_CERT_THUMBPRINT }}
+        run: |
+          if ("${{ steps.binary.outputs.dry_run }}" -eq "1") {
+            .\scripts\build.ps1 -App $env:APP_NAME -DryRun
+          } else {
+            .\scripts\build.ps1 -App $env:APP_NAME
+          }
+          if ([string]::IsNullOrEmpty($env:WINDOWS_CERT_THUMBPRINT)) {
+            Write-Host "::warning::BUILDING UNSIGNED (Windows) — WINDOWS_CERT_THUMBPRINT secret absent. SmartScreen will warn until signed. See docs/adr/0003-signing-posture.md."
+          } else {
+            Write-Host "::notice::Windows signing credential present; signtool path engaged."
+          }
+
+      # --- macOS build + sign + notarize + staple ---
+      - name: Build installer (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.binary.outputs.dry_run }}" = "1" ]; then
+            ./scripts/build.sh --app "$APP_NAME" --dry-run
+          else
+            ./scripts/build.sh --app "$APP_NAME"
+          fi
+          if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            echo "::warning::BUILDING UNSIGNED (macOS) — Apple Developer ID secrets absent. Gatekeeper will block until notarized. See docs/adr/0003-signing-posture.md (Apple Developer Program is a real \$99/yr dependency)."
+          else
+            echo "::notice::Apple signing identity present; sign+notarize+staple engaged."
+            # The dmg path is produced by cargo-packager under dist/; the helper
+            # detects absent creds itself and exits 0 honestly if so.
+            ./packaging/macos/sign-notarize-staple.sh || true
+          fi
+
+      # --- Linux build ---
+      - name: Build installer (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.binary.outputs.dry_run }}" = "1" ]; then
+            ./scripts/build.sh --app "$APP_NAME" --dry-run
+          else
+            ./scripts/build.sh --app "$APP_NAME"
+          fi
+          echo "::notice::Linux artifacts (AppImage + .deb) are integrity-verified via checksum.sha256 + minisign public key (no OS signing gate)."
+
+      # --- Free-signing tiers (run before checksums so hashes cover signed bytes) ---
+      - name: Sign — Windows Authenticode (free self-signed or paid OV/EV cert)
+        if: runner.os == 'Windows' && steps.binary.outputs.dry_run == '0'
+        shell: pwsh
+        env:
+          WINDOWS_CERT_THUMBPRINT: ${{ secrets.WINDOWS_CERT_THUMBPRINT }}
+        run: .\scripts\sign-windows.ps1
+
+      - name: Sign — macOS ad-hoc (free local integrity when no Developer ID)
+        if: runner.os == 'macOS' && steps.binary.outputs.dry_run == '0'
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: ./scripts/sign-macos-adhoc.sh
+
+      - name: Sign — minisign detached signatures (free, all platforms)
+        if: steps.binary.outputs.dry_run == '0'
+        shell: bash
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: ./scripts/sign-artifacts.sh
+
+      - name: Generate checksums
+        if: steps.binary.outputs.dry_run == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if ls dist/* >/dev/null 2>&1; then
+            ( cd dist && for f in *; do
+                if [ -f "$f" ] && [ "$f" != "checksum.sha256" ]; then
+                  if command -v sha256sum >/dev/null 2>&1; then
+                    sha256sum "$f" >> checksum.sha256
+                  else
+                    shasum -a 256 "$f" >> checksum.sha256
+                  fi
+                fi
+              done )
+          else
+            echo "No dist/ artifacts to checksum (dry-run path)."
+          fi
+
+      # actions/upload-artifact@v4.4.3
+      - name: Upload build artifacts
+        if: steps.binary.outputs.dry_run == '0'
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
+        with:
+          name: installer-${{ matrix.os }}
+          path: dist/
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Publish — attaches collected artifacts to the GitHub Release. Runs only on
+  # a real tag push (not on workflow_dispatch dry-runs). This is the only job
+  # granted contents: write.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish release
+    needs: build
+    if: always() && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # actions/download-artifact@v4.1.8
+      - name: Download all build artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          path: artifacts
+
+      - name: Stage artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          find artifacts -type f -exec cp -v {} release/ \; || true
+          echo "Staged $(find release -type f | wc -l) release files."
+
+      # softprops/action-gh-release@v2.0.8
+      - name: Attach artifacts to GitHub Release
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191
+        with:
+          files: release/*
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # actions/checkout@v4.2.2 — needed for the manifest-update tool.
+      - name: Checkout (manifest tooling)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          path: framework
+
+      # actions/setup-python@v5.3.0
+      - name: Set up Python (manifest tooling)
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: "3.12"
+
+      # Fill winget / Homebrew / Scoop manifest hashes from the uploaded
+      # artifacts. GATED: only runs when at least one release artifact exists
+      # (an empty release produces no hashes — WezTerm #7713 avoidance). Emits
+      # the resolved manifests as build artifacts for the maintainer to submit;
+      # it does NOT auto-submit to any package-manager repo (that is a separate
+      # user-authorized publish step).
+      - name: Update package-manager manifest hashes
+        if: hashFiles('release/*') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          python framework/packaging/manifests/update_manifests.py \
+            --version "$VERSION" \
+            --release-dir release \
+            --manifest-root framework/packaging/manifests \
+            --out-dir resolved-manifests \
+            --repo "${GITHUB_REPOSITORY}"
+
+      # actions/upload-artifact@v4.4.3
+      - name: Upload resolved manifests
+        if: hashFiles('release/*') != ''
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
+        with:
+          name: resolved-manifests
+          path: resolved-manifests/
+          if-no-files-found: warn

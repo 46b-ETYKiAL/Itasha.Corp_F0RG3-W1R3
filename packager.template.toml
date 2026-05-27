@@ -1,0 +1,145 @@
+# ============================================================================
+# Itasha.Corp Installer Framework — SHARED COMPANY DEFAULTS (template)
+# ============================================================================
+#
+# This file holds every company-wide default. A per-app override in
+# `apps/<appname>.toml` supplies only what differs (name, binary, icon, IDs,
+# install sub-directory). The build wrapper (`scripts/build.sh` /
+# `scripts/build.ps1`) deep-merges this template with the chosen per-app
+# override and feeds the result to cargo-packager.
+#
+# ENGINE: cargo-packager (CrabNebula). Pinned tool version is recorded in the
+# framework README and the release workflow. One config -> Windows NSIS,
+# macOS .dmg, Linux AppImage + .deb.
+#
+# SECRETS: signing identities are read from the ENVIRONMENT BY NAME only.
+# There are NO literal keys, passwords, certificates, or tokens in this file.
+# See ships-publicly-vs-never.md.
+#
+# Placeholders of the form ${APP_*} are filled by the per-app override merge;
+# placeholders of the form ${ENV:NAME} are resolved from CI secrets at build
+# time and are never literal here.
+# ----------------------------------------------------------------------------
+
+# Schema marker for the framework's own validator (tests/validate_config.py).
+# This is a framework convention, not a cargo-packager key; the merge step
+# strips the [itasha] table before invoking cargo-packager.
+[itasha]
+template_version = "1.0.0"
+publisher = "Itasha.Corp"
+# Windows per-machine install root (D4). The per-app override appends its
+# own install_subdir to this base, e.g. "C0PL4ND" -> the D4 target path.
+windows_install_root = "C:\\Program Files\\Itasha.Corp"
+license = "MIT OR Apache-2.0"
+
+# ----------------------------------------------------------------------------
+# cargo-packager top-level package metadata (company defaults)
+# Per-app overrides set: product_name, identifier, version, icons, binaries.
+# ----------------------------------------------------------------------------
+[package.metadata.packager]
+# Filled by the per-app override:
+product_name = "${APP_PRODUCT_NAME}"
+identifier = "${APP_IDENTIFIER}"        # reverse-DNS, e.g. corp.itasha.c0pl4nd
+version = "${APP_VERSION}"
+authors = ["Itasha.Corp"]
+publisher = "Itasha.Corp"
+license_file = "../../LICENSE-MIT"
+homepage = "${APP_HOMEPAGE}"
+description = "${APP_DESCRIPTION}"
+long_description = "${APP_LONG_DESCRIPTION}"
+# Output formats selected per-app via the override `formats` key. Company
+# default is the full cross-platform set; the override narrows it per target.
+formats = ["nsis", "dmg", "appimage", "deb"]
+
+# Icons are provided by the per-app override (multi-resolution).
+icons = ["${APP_ICON_ICO}", "${APP_ICON_PNG}", "${APP_ICON_ICNS}"]
+
+# The compiled binary is consumed as a BUILD INPUT, never vendored as source.
+# `binaries` points at an already-built artifact path supplied by the override
+# / CI (see docs/binary-input-contract.md).
+[[package.metadata.packager.binaries]]
+path = "${APP_BINARY_PATH}"
+main = true
+
+# ----------------------------------------------------------------------------
+# Windows / NSIS — branded installer defaults (D4)
+# ----------------------------------------------------------------------------
+[package.metadata.packager.nsis]
+# Per-machine install -> C:\Program Files\Itasha.Corp\<APP> (elevation expected).
+install_mode = "perMachine"
+# Default install directory the user may change in the directory page. The
+# merge step resolves this from windows_install_root + the app install_subdir.
+# cargo-packager honours $INSTDIR defaulting via the template variable below.
+# Branded wizard art (company defaults; per-app override may replace).
+header_image = "branding/nsis-header.bmp"
+sidebar_image = "branding/nsis-sidebar.bmp"
+installer_icon = "${APP_ICON_ICO}"
+# Languages shipped in the wizard (English default; localizable later by config).
+languages = ["English"]
+# Custom NSIS hook script. The component/options page (Start Menu / Desktop /
+# Launch checkboxes with the exact D-spec defaults) and the ARP
+# InstallLocation/DisplayIcon writes that cargo-packager does not expose as
+# first-class keys are implemented here. See packaging/windows/options.nsh and
+# the NOTES section at the bottom of this file.
+installer_hooks = "packaging/windows/options.nsh"
+
+# ----------------------------------------------------------------------------
+# macOS / DMG — branded disk image defaults
+# ----------------------------------------------------------------------------
+[package.metadata.packager.macos]
+# Minimum system version is set per-app; company default is a conservative floor.
+minimum_system_version = "11.0"
+# Signing identity is read BY NAME from the environment at build time. Empty
+# default => unsigned dev build (honest dev-unsigned-until-creds posture).
+signing_identity = "${ENV:APPLE_SIGNING_IDENTITY}"
+
+[package.metadata.packager.dmg]
+# Branded background + drag-to-Applications layout (company default).
+background = "branding/dmg-background.png"
+window_size = { width = 660, height = 400 }
+app_position = { x = 180, y = 200 }
+application_folder_position = { x = 480, y = 200 }
+
+# ----------------------------------------------------------------------------
+# Linux — AppImage + .deb defaults
+# ----------------------------------------------------------------------------
+[package.metadata.packager.deb]
+# Per-app override sets depends/section; company default section is utils.
+section = "utils"
+priority = "optional"
+# The freedesktop .desktop entry shipped in the package (menu integration).
+# Per-app file lives at packaging/linux/<app>.desktop (e.g. c0pl4nd.desktop:
+# Categories=System;Utility;TerminalEmulator;). cargo-packager bundles it into
+# both the .deb and the AppImage. The merge step points this at the per-app
+# .desktop based on the override's product name.
+desktop_template = "packaging/linux/${APP_DESKTOP_FILE}"
+
+[package.metadata.packager.appimage]
+# AppImage is the portable primary; the .desktop + 256px icon come from the
+# per-app override + branding/. The 256px icon (branding/<app>/icon-256.png)
+# is registered for hicolor/256x256/apps menu + taskbar integration.
+bins = []
+
+# ============================================================================
+# NOTES — honest cargo-packager limitations (do not fake; document instead)
+# ============================================================================
+# 1. OPTION-SCREEN CHECKBOXES (Start Menu / Desktop / Launch) AND THE EXACT
+#    DEFAULT-CHECK STATES are NOT first-class cargo-packager keys. cargo-packager
+#    generates a standard NSIS script; to add a Components/options page with the
+#    D-spec checkbox defaults (Start Menu ON, Desktop OFF, Launch ON) we use the
+#    `installer_hooks` NSIS include (packaging/windows/options.nsh). This is the
+#    documented, supported extension point — not a workaround.
+#
+# 2. ARP InstallLocation + DisplayIcon: cargo-packager writes basic ARP keys
+#    (DisplayName, Publisher, DisplayVersion) from the metadata above. The
+#    explicit InstallLocation and a DisplayIcon pointing at the installed EXE
+#    are written in the same NSIS hook (options.nsh) to guarantee the
+#    "can't-find-the-app" avoidance regardless of cargo-packager version.
+#
+# 3. USER-SELECTABLE INSTALL DIRECTORY: NSIS shows the directory page by
+#    default for perMachine installs; the default $INSTDIR is composed from
+#    windows_install_root + the per-app install_subdir during the merge step.
+#
+# 4. PLACEHOLDER RESOLUTION: ${APP_*} are filled from the per-app override;
+#    ${ENV:NAME} are resolved from CI secrets at build time. The merge step
+#    fails loudly if a required ${APP_*} placeholder is left unresolved.

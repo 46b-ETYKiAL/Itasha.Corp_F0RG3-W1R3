@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 400" width="660" height="400">
+  <defs>
+    <radialGradient id="dbg" cx="50%" cy="40%" r="80%">
+      <stop offset="0%" stop-color="#14111c"/>
+      <stop offset="100%" stop-color="#08060d"/>
+    </radialGradient>
+    <pattern id="dscan" patternUnits="userSpaceOnUse" width="4" height="4">
+      <line x1="0" y1="0" x2="4" y2="0" stroke="#fff" stroke-width="0.5" opacity="0.06"/>
+    </pattern>
+    <filter id="dg"><feGaussianBlur stdDeviation="2.5"/></filter>
+  </defs>
+  <rect width="660" height="400" fill="url(#dbg)"/>
+  <rect width="660" height="400" fill="url(#dscan)"/>
+  <!-- Brand wordmark -->
+  <text x="330" y="64" text-anchor="middle" fill="#5a5869" font-size="11" letter-spacing="6" font-family="monospace">I T A S H A . C O R P</text>
+  <!-- Drag hint arrow from app (left, ~x180) to Applications (right, ~x480) -->
+  <path d="M 250 200 L 410 200" fill="none" stroke="#00e5ff" stroke-width="3" stroke-dasharray="10,6" opacity="0.5" filter="url(#dg)"/>
+  <path d="M 410 200 L 392 190 M 410 200 L 392 210" fill="none" stroke="#00e5ff" stroke-width="3" opacity="0.6"/>
+  <text x="330" y="250" text-anchor="middle" fill="#a020ff" font-size="13" letter-spacing="3" font-family="monospace">drag to Applications to install</text>
+  <text x="330" y="360" text-anchor="middle" fill="#4a4859" font-size="9" letter-spacing="2" font-family="monospace">F0RG3-W1R3 · MIT OR Apache-2.0</text>
+</svg>

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="170" viewBox="0 0 1280 170" role="img" aria-label="ITASHA.CORP // F0RG3-W1R3">
+  <defs>
+    <pattern id="scanf" patternUnits="userSpaceOnUse" width="1280" height="4">
+      <rect width="1280" height="2" fill="transparent"/><rect y="2" width="1280" height="2" fill="rgba(0,0,0,0.16)"/>
+    </pattern>
+    <radialGradient id="vigf" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="transparent"/><stop offset="100%" stop-color="rgba(0,0,0,0.32)"/>
+    </radialGradient>
+    <filter id="phosf"><feGaussianBlur in="SourceGraphic" stdDeviation="0.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect x="0" y="0" width="1280" height="170" rx="10" fill="#111118"/>
+  <rect x="2" y="2" width="1276" height="166" rx="9" fill="#18181f" stroke="#2a2833" stroke-width="1"/>
+  <rect x="20" y="16" width="1240" height="128" rx="4" fill="#08060d"/>
+  <rect x="20" y="16" width="1240" height="128" rx="4" fill="none" stroke="#1a1825"/>
+  <rect x="20" y="16" width="1240" height="128" rx="4" fill="url(#scanf)"/>
+  <rect x="20" y="16" width="1240" height="128" rx="4" fill="url(#vigf)"/>
+  <g stroke="#a020ff" stroke-width="1.2" fill="none" opacity="0.5">
+    <path d="M44 40 h20 M44 40 v20"/><path d="M1236 40 h-20 M1236 40 v20"/>
+    <path d="M44 130 h20 M44 130 v-20"/><path d="M1236 130 h-20 M1236 130 v-20"/>
+  </g>
+  <g filter="url(#phosf)" font-family="'SF Mono','Fira Code','Cascadia Code','JetBrains Mono',Consolas,monospace" text-anchor="middle">
+    <text x="640" y="62" font-size="13" fill="#00fffe" letter-spacing="1">one config · every platform · branded installers</text>
+    <line x1="380" y1="76" x2="900" y2="76" stroke="#a020ff" stroke-width="0.4" opacity="0.35"/>
+    <text x="640" y="98" font-size="11" fill="#5a5869" letter-spacing="2">FREE-SIGNED (minisign) · CHECKSUM-VERIFIED · NO TELEMETRY · MIT OR APACHE-2.0</text>
+    <text x="640" y="126" font-size="9" fill="#2a2833" letter-spacing="4">I T A S H A . C O R P   //   I N S T A L L E R   F R A M E W O R K</text>
+  </g>
+  <circle cx="1244" cy="154" r="3" fill="#01fe36" opacity="0.6"/><circle cx="1244" cy="154" r="1.5" fill="#01fe36"/>
+  <text x="40" y="157" font-family="monospace" font-size="8" fill="#2a2833" letter-spacing="1">ITASHA.CORP</text>
+  <text x="1150" y="157" font-family="monospace" font-size="8" fill="#2a2833">CRT-IC // FORGE</text>
+</svg>

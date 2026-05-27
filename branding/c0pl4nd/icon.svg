@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="70%">
+      <stop offset="0%" stop-color="#16131f"/>
+      <stop offset="100%" stop-color="#08060d"/>
+    </radialGradient>
+    <filter id="g"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <!-- Rounded app tile -->
+  <rect x="8" y="8" width="240" height="240" rx="48" ry="48" fill="url(#bg)" stroke="#2a2833" stroke-width="3"/>
+  <!-- Prompt glyph: operator's shell into the wired -->
+  <path d="M 78 96 L 118 128 L 78 160" fill="none" stroke="#00e5ff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" filter="url(#g)"/>
+  <rect x="132" y="150" width="52" height="14" rx="3" fill="#e020ff" filter="url(#g)"/>
+  <!-- Akira-red signal tick -->
+  <circle cx="196" cy="64" r="7" fill="#ff0040" opacity="0.85"/>
+</svg>

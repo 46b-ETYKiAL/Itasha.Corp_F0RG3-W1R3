@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="480" viewBox="0 0 1280 480" role="img" aria-label="F0RG3-W1R3 — one config, every platform, branded installers">
+  <defs>
+    <pattern id="scan" patternUnits="userSpaceOnUse" width="1280" height="4">
+      <rect width="1280" height="2" fill="transparent"/>
+      <rect y="2" width="1280" height="2" fill="rgba(0,0,0,0.16)"/>
+    </pattern>
+    <radialGradient id="vig" cx="50%" cy="48%" r="72%">
+      <stop offset="0%" stop-color="transparent"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.46)"/>
+    </radialGradient>
+    <linearGradient id="grid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00fffe" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#00fffe" stop-opacity="0.5"/>
+    </linearGradient>
+    <filter id="phos"><feGaussianBlur in="SourceGraphic" stdDeviation="0.7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="soft"><feGaussianBlur stdDeviation="2.2"/></filter>
+    <clipPath id="sc"><rect x="28" y="22" width="1224" height="426" rx="6"/></clipPath>
+  </defs>
+  <rect x="0" y="0" width="1280" height="480" rx="14" fill="#111118"/>
+  <rect x="2" y="2" width="1276" height="476" rx="13" fill="#18181f" stroke="#2a2833" stroke-width="1"/>
+  <line x1="24" y1="14" x2="1256" y2="14" stroke="#2a2833" stroke-width="0.5"/>
+  <line x1="24" y1="466" x2="1256" y2="466" stroke="#2a2833" stroke-width="0.5"/>
+  <rect x="28" y="22" width="1224" height="426" rx="6" fill="#08060d"/>
+  <rect x="28" y="22" width="1224" height="426" rx="6" fill="none" stroke="#1a1825"/>
+  <g clip-path="url(#sc)" opacity="0.5">
+    <g stroke="url(#grid)" stroke-width="0.6">
+      <line x1="640" y1="318" x2="40" y2="446"/><line x1="640" y1="318" x2="200" y2="446"/>
+      <line x1="640" y1="318" x2="380" y2="446"/><line x1="640" y1="318" x2="540" y2="446"/>
+      <line x1="640" y1="318" x2="640" y2="446"/><line x1="640" y1="318" x2="740" y2="446"/>
+      <line x1="640" y1="318" x2="900" y2="446"/><line x1="640" y1="318" x2="1080" y2="446"/>
+      <line x1="640" y1="318" x2="1240" y2="446"/>
+    </g>
+    <g stroke="#00fffe" stroke-width="0.5" opacity="0.28">
+      <line x1="120" y1="350" x2="1160" y2="350"/><line x1="80" y1="380" x2="1200" y2="380"/>
+      <line x1="48" y1="414" x2="1232" y2="414"/>
+    </g>
+  </g>
+  <rect x="28" y="22" width="1224" height="426" rx="6" fill="url(#scan)"/>
+  <rect x="28" y="22" width="1224" height="426" rx="6" fill="url(#vig)"/>
+  <g stroke="#00fffe" stroke-width="1.4" fill="none" opacity="0.65">
+    <path d="M56 56 h26 M56 56 v26"/><path d="M1224 56 h-26 M1224 56 v26"/>
+    <path d="M56 414 h26 M56 414 v-26"/><path d="M1224 414 h-26 M1224 414 v-26"/>
+  </g>
+  <g filter="url(#phos)" font-family="'SF Mono','Fira Code','Cascadia Code','JetBrains Mono',Consolas,monospace">
+    <text x="640" y="86" text-anchor="middle" font-size="13" fill="#5a5869" letter-spacing="7">I T A S H A . C O R P</text>
+    <g font-size="62" font-weight="bold" letter-spacing="6" text-anchor="middle">
+      <text x="643" y="158" fill="#ff2d78" opacity="0.55" filter="url(#soft)">F0RG3-W1R3</text>
+      <text x="637" y="158" fill="#00fffe" opacity="0.55" filter="url(#soft)">F0RG3-W1R3</text>
+      <text x="640" y="158" fill="#e9f7ff">F0RG3-W1R3</text>
+    </g>
+    <text x="640" y="190" text-anchor="middle" font-size="15" fill="#a020ff" letter-spacing="3">forge an installer from a binary · wire it onto every platform</text>
+    <text x="160" y="240" font-size="12" fill="#5a5869">root@itasha:~# ./forge --app c0pl4nd ──────────────────────────────────────</text>
+    <text x="180" y="266" font-size="12.5" fill="#00fffe">&gt; load packager.template.toml + per-app override</text>
+    <text x="1010" y="266" font-size="12.5" fill="#01fe36">[ OK ]</text>
+    <text x="180" y="290" font-size="12.5" fill="#00fffe">&gt; resolve compiled binary (never source)</text>
+    <text x="1010" y="290" font-size="12.5" fill="#01fe36">[ OK ]</text>
+    <text x="180" y="314" font-size="12.5" fill="#00fffe">&gt; forge  nsis · dmg · appimage · deb</text>
+    <text x="1010" y="314" font-size="12.5" fill="#01fe36">[ OK ]</text>
+    <text x="180" y="338" font-size="12.5" fill="#00fffe">&gt; sign  minisign · authenticode · ad-hoc</text>
+    <text x="1010" y="338" font-size="12.5" fill="#01fe36">[ OK ]</text>
+    <text x="180" y="362" font-size="12.5" fill="#00fffe">&gt; emit  checksum.sha256 + branded wizard art</text>
+    <text x="1010" y="362" font-size="12.5" fill="#01fe36">[ OK ]</text>
+    <text x="160" y="404" font-size="12" fill="#5a5869">windows · macos · linux .............................................</text>
+    <text x="1010" y="404" font-size="12" fill="#01fe36" font-weight="bold">[ 0NL1N3 ]</text>
+    <text x="1086" y="404" font-size="12.5" fill="#00fffe">&#x2588;</text>
+  </g>
+  <rect x="36" y="430" width="1208" height="2" fill="#00fffe" opacity="0.06"/>
+  <circle cx="1232" cy="460" r="4" fill="#01fe36" opacity="0.85"/><circle cx="1232" cy="460" r="2" fill="#01fe36"/>
+  <text x="56" y="463" font-family="monospace" font-size="9" fill="#2a2833" letter-spacing="2">ITASHA.CORP</text>
+  <text x="1116" y="463" font-family="monospace" font-size="9" fill="#2a2833">CRT-IC // FORGE</text>
+</svg>
