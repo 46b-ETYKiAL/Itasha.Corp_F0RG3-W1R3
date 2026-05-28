@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # ============================================================================
 # sign-windows.ps1 — Authenticode-sign Windows installers (free or paid cert)
 # ============================================================================

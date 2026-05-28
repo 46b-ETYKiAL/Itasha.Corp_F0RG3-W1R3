@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # ============================================================================
 # build.ps1 — Itasha.Corp installer framework build wrapper (PowerShell)
 # ============================================================================

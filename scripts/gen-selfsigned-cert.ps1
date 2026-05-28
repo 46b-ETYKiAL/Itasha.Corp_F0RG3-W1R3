@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # ============================================================================
 # gen-selfsigned-cert.ps1 — free self-signed Windows code-signing cert
 # ============================================================================
