@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metainfo for the Flathub store listing. Required by Flathub;
+     contains only public product metadata (name, summary, license, links).
+     No secrets, no source, no internal references. -->
+<component type="desktop-application">
+  <id>org.itashacorp.C0PL4ND</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <name>C0PL4ND</name>
+  <summary>Fast, cross-platform terminal emulator</summary>
+  <description>
+    <p>
+      C0PL4ND is a GPU-accelerated, cross-platform terminal emulator from
+      Itasha.Corp. It ships fast rendering, tabs, splits, search, and a command
+      palette.
+    </p>
+  </description>
+  <launchable type="desktop-id">org.itashacorp.C0PL4ND.desktop</launchable>
+  <url type="homepage">https://github.com/itasha-corp/c0pl4nd</url>
+  <url type="bugtracker">https://github.com/itasha-corp/c0pl4nd/issues</url>
+  <developer id="corp.itasha">
+    <name>Itasha.Corp</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>System</category>
+    <category>Utility</category>
+    <category>TerminalEmulator</category>
+  </categories>
+  <releases>
+    <release version="0.1.0" date="2026-05-27">
+      <description>
+        <p>Initial Flathub listing for the C0PL4ND terminal.</p>
+      </description>
+    </release>
+  </releases>
+</component>

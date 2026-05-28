@@ -64,18 +64,38 @@ else
   exit 127
 fi
 
-# --- Validate + resolve the merged config (no external tool needed). ---
+# --- Validate template + override (TOML well-formed + required keys). ---
 echo "==> Validating template + override for app '$APP'"
 "$PY" "$ROOT/tests/validate_config.py" "$TEMPLATE" "$OVERRIDE"
 
 # --- Resolve the binary input path (binary-input-contract.md). ---
 RESOLVED_BINARY="${BINARY:-${ITASHA_BINARY_PATH:-}}"
+
+# --- Merge template + override into a cargo-packager-acceptable config. ---
+# Closes Gap A from qa-report-2026-05-28.md: the per-app override is in the
+# framework's [itasha.app] shape, which cargo-packager rejects directly. The
+# merge step (tests/merge_config.py) deep-merges + resolves ${APP_*} +
+# strips [itasha] + flattens [package.metadata.packager.*] -> top-level.
+MERGED_CONFIG="$ROOT/packaging/build/$APP.packager.toml"
+echo "==> Merging template + override -> $MERGED_CONFIG"
+if [ -n "$RESOLVED_BINARY" ]; then
+  "$PY" "$ROOT/tests/merge_config.py" "$APP" \
+    --root "$ROOT" \
+    --binary-path "$RESOLVED_BINARY" \
+    --output "$MERGED_CONFIG"
+else
+  "$PY" "$ROOT/tests/merge_config.py" "$APP" \
+    --root "$ROOT" \
+    --output "$MERGED_CONFIG"
+fi
+
 if [ "$DRY_RUN" -eq 1 ]; then
-  echo "==> Dry run: config resolves; skipping cargo-packager invocation."
+  echo "==> Dry run: merged config resolves; skipping cargo-packager invocation."
+  echo "    merged config: $MERGED_CONFIG"
   if [ -n "$RESOLVED_BINARY" ]; then
-    echo "    binary input: $RESOLVED_BINARY"
+    echo "    binary input:  $RESOLVED_BINARY"
   else
-    echo "    binary input: (none supplied — dry run uses a placeholder)"
+    echo "    binary input:  (none supplied — dry run uses a placeholder)"
   fi
   exit 0
 fi
@@ -101,8 +121,6 @@ if ! command -v cargo-packager >/dev/null 2>&1; then
   exit 127
 fi
 
-echo "==> Invoking cargo-packager for app '$APP'"
+echo "==> Invoking cargo-packager for app '$APP' with merged config"
 cd "$ROOT"
-# cargo-packager reads the merged config; the binary path is passed through the
-# resolved config produced by the validator's merge step.
-ITASHA_BINARY_PATH="$RESOLVED_BINARY" cargo-packager --config "apps/$APP.toml"
+ITASHA_BINARY_PATH="$RESOLVED_BINARY" cargo-packager --config "$MERGED_CONFIG"

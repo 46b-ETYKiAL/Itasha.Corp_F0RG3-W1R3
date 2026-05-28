@@ -1,5 +1,5 @@
 {
-  "//": "Scoop manifest (template) — Itasha.Corp C0PL4ND. The __PLACEHOLDER__ values (version, url, hash) are filled by CI on release from the uploaded artifact's checksum.sha256. Hashes are never hand-edited (WezTerm #7713 hash-drift avoidance). Scoop installs the NSIS .exe per-user; for a per-machine install use winget (Scope: machine) or the installer directly.",
+  "//": "Scoop manifest (template) — Itasha.Corp C0PL4ND. Lives in the Itasha.Corp Scoop bucket (add via `scoop bucket add itasha-corp https://github.com/itasha-corp/scoop-bucket`, then `scoop install itasha-corp/c0pl4nd`). The __PLACEHOLDER__ values (version/url/hash) seed the first publish; thereafter the checkver + autoupdate blocks below let `scoop update` resolve the new version and recompute the hash AUTONOMOUSLY from the published asset — no hand-edited hash, ever (WezTerm #7713 hash-drift avoidance). Scoop installs the NSIS .exe per-user; for a per-machine install use winget (Scope: machine) or the installer directly.",
   "version": "__VERSION__",
   "description": "Fast, cross-platform terminal emulator",
   "homepage": "https://github.com/itasha-corp/c0pl4nd",
@@ -19,5 +19,15 @@
   },
   "checkver": {
     "github": "https://github.com/itasha-corp/c0pl4nd"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/itasha-corp/c0pl4nd/releases/download/v$version/c0pl4nd-$version-x86_64-setup.exe"
+      }
+    },
+    "hash": {
+      "url": "$url.sha256"
+    }
   }
 }

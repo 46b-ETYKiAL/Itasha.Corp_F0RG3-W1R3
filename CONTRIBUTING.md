@@ -28,15 +28,24 @@ A pull request that fails the content-safety audit cannot merge.
 ## How to add a new app
 
 1. Copy `apps/c0pl4nd.toml` to `apps/<yourapp>.toml`.
-2. Edit the override (keep it small — roughly 15–20 lines):
-   - `app.name`, `app.binary`, `app.identifier` (reverse-DNS bundle ID)
-   - `app.icon`, `app.install_subdir` (the folder name under the company root)
-   - per-target enable flags (`windows`, `macos`, `linux`)
-3. Provide the app's brand assets under `branding/` (icon SVG, NSIS header /
-   sidebar, dmg background) or point the override at shared defaults.
-4. Validate locally: `python tests/validate_config.py apps/<yourapp>.toml`.
+2. Edit the `[itasha.app]` table (keep it small — roughly 15–20 lines):
+   - `product_name`, `binary`, `identifier` (reverse-DNS bundle ID)
+   - `icon_ico` / `icon_png` / `icon_icns`, `install_subdir` (the folder name
+     under the company root, e.g. `SCR1B3`)
+   - `formats` (the subset of `nsis` / `dmg` / `appimage` / `deb` this app ships)
+   - `desktop_file` for the Linux `.desktop` entry
+3. Provide the app's brand assets under `branding/<yourapp>/` (icons, NSIS
+   header / sidebar, dmg background) or point the override at shared defaults.
+4. Validate locally:
+   `python tests/validate_config.py packager.template.toml apps/<yourapp>.toml`.
+   The resolved Windows install dir is printed as
+   `<windows_install_root>\<install_subdir>`; confirm it lands under
+   `C:\Program Files\Itasha.Corp\`.
 5. The shared `packager.template.toml` supplies every company default; you only
    override what differs.
+
+`apps/scribe.toml` (the SCR1B3 app) is a worked second example proving the
+template is genuinely reusable across apps, not C0PL4ND-shaped.
 
 ## How signing works (dev-unsigned-until-creds)
 
@@ -52,21 +61,37 @@ Until those credentials exist, signing steps are **gated and skipped honestly**
 Gatekeeper warning explanation. Notarization is never faked. Secrets are
 referenced **by name** from CI secrets / HSM only and never written to the repo.
 
-## Local checks before opening a PR
+## Local checks before opening a PR (pre-push equivalent)
+
+Run these from the framework root (`apps/itasha-installer/`). They are the exact
+local equivalent of the `lint-and-validate` job in `.github/workflows/ci.yml`;
+the last two are **required gates** that block a PR from merging.
 
 ```sh
-# Lint workflows (if actionlint is installed)
+# 1. Lint the workflow definitions (CI runs actionlint 1.7.12, pinned).
 actionlint .github/workflows/*.yml
 
-# Shell sanity (if shellcheck is installed)
-shellcheck packaging/**/*.sh scripts/*.sh
+# 2. Lint shell scripts (CI runs shellcheck + shfmt on packaging/scripts/tests).
+shellcheck packaging/**/*.sh scripts/*.sh tests/**/*.sh
 
-# Config + manifest schema validation
+# 3. Schema-validate the shared template + every per-app override.
+#    Prints each app's resolved Windows install dir; confirm it is under
+#    C:\Program Files\Itasha.Corp\ .  REQUIRED gate.
 python tests/validate_config.py packager.template.toml apps/*.toml
 
-# IP-safety boundary audit (must exit 0)
+# 4. IP-safety / content-safety boundary audit — must exit 0.  REQUIRED gate.
 python tests/content_safety_audit.py
 ```
+
+**CI parity (confirmed):** `.github/workflows/ci.yml` `lint-and-validate` job
+runs `python tests/validate_config.py packager.template.toml apps/*.toml`
+followed by `python tests/content_safety_audit.py` as a REQUIRED gate on every
+`pull_request`, alongside `actionlint`, `shellcheck`, `shfmt`, and `ruff`. A PR
+that fails either of the two Python checks cannot merge. `actionlint` and
+`shellcheck` may be absent on a local machine — they always run in CI, so an
+honest local skip is acceptable; the two `python tests/...` checks have no
+third-party dependency (`tomllib` is stdlib on Python 3.11+) and should always
+pass locally before pushing.
 
 ## Conventions
 

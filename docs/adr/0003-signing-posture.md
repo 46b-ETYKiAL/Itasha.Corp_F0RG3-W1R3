@@ -1,6 +1,6 @@
 # ADR-0003 — Code-Signing Posture (Windows / macOS / Linux)
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-05-27 — see § Amendment)
 - **Date:** 2026-05-26
 - **Deciders:** Itasha.Corp installer framework
 - **Supersedes:** none
@@ -117,6 +117,62 @@ supersedes Tier 1 for that platform. The minisign tier always runs regardless.
 This honours the project's **no-paid-services** default: the installer is fully
 functional and cryptographically verifiable for free; paid certs are an opt-in
 upgrade that only removes the OS first-run warning, never a functional gate.
+
+## Amendment — 2026-05-27 (managed auto-rotating signing recommendation)
+
+Two 2026 facts (both S1) change the Windows signing calculus recorded in §1.
+Source: `best-in-class-installer-2026-05-27.md` § signing-2026 (P0-3).
+
+### A. CA/B Forum **CSC-31** — effective 2026-03-01 (~460-day cert ceiling)
+
+CA/Browser Forum ballot **CSC-31** caps publicly-trusted code-signing
+certificate validity at **~460 days (~15 months)**, down from the prior
+39-month maximum. A multi-year purchased OV cert no longer exists; renewal
+is now an annual-ish operational cadence with hard cert expiry.
+
+**Implication:** a long-lived purchased OV cert is now strictly worse on
+operational cost — it expires inside 15 months and must be re-issued, re-keyed
+into the HSM, and re-plumbed. The expiry-driven renewal toil is recurring.
+
+### B. **Azure Artifact Signing** reached **GA** — the eligibility wall dropped
+
+"Azure Trusted Signing" → **"Azure Artifact Signing"** reached **General
+Availability** and **dropped the 3-year-organization-history requirement**. It
+is now open to organizations in **US / Canada / EU / UK** *and* to **individual
+developers in US / Canada** (no history bar). Cloud-HSM-backed, ~$9.99/mo Basic
+tier (5,000 sigs/mo), with a first-party GitHub Action and **3-day automatic
+cert rotation** (timestamped signatures stay valid indefinitely after the
+short-lived cert rotates).
+
+**This falsifies the §1 caveat** that Azure Trusted Signing's "individual
+onboarding [is] closed for preview" / eligibility was tightened. That caveat is
+**no longer true** — the path is open again, including for individuals in US/CA.
+§1's preference-order item 1 ("US/Canada legal entity ≥ 3 years old") is
+**superseded**: the 3-year-history bar is gone, and EU/UK orgs + US/CA
+individuals are now eligible.
+
+### Updated recommendation (supersedes §1's "purchased OV cert" default)
+
+> **Prefer managed, auto-rotating cloud signing (Azure Artifact Signing) over a
+> purchased long-lived OV certificate.** Under CSC-31 a purchased cert expires
+> within ~15 months and carries recurring renewal/re-keying toil; a managed
+> service that auto-rotates short-lived certs every ~3 days and timestamps every
+> signature sidesteps renewal entirely while keeping all past signatures valid.
+> Azure Artifact Signing is the recommended primary now that it is GA and open
+> to EU/UK orgs + US/CA individuals.**
+
+The fallback order is otherwise unchanged: if the org/individual is **not**
+eligible for Azure Artifact Signing, use a cloud-HSM OV cert from
+DigiCert / SSL.com / Certum (now bounded by the CSC-31 ~460-day ceiling), or
+**SignPath Foundation** for OSS (publisher displays as "SignPath Foundation").
+
+This amendment does **not** change the macOS posture (§2 — Apple Developer ID
++ notarize + staple, a real $99/yr dependency), the Linux posture (§3), the
+gating rule (§4 — signing is never faked), or the free-signing tiers (§5 —
+minisign / self-signed / ad-hoc remain the wired default with no paid
+dependency). The free-vs-paid plumbing is still a secret-by-name swap with no
+code change; Azure Artifact Signing slots into the same Tier-2 paid slot as the
+OV cert it now supersedes as the recommended option.
 
 ## Consequences
 

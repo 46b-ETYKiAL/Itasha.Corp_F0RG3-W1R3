@@ -103,13 +103,27 @@ The shared template supplies every company default — you override only what di
 
 ## Per-OS install (for end users of a packaged app)
 
+The packaged apps ship to managed package managers. The three one-liners for
+the first consumer, **C0PL4ND**, are:
+
+```sh
+winget install ItashaCorp.C0PL4ND                                          # Windows
+brew install --cask itasha-corp/tap/c0pl4nd                                # macOS
+scoop bucket add itasha-corp https://github.com/itasha-corp/scoop-bucket   # Windows (one-time)
+scoop install itasha-corp/c0pl4nd
+```
+
+A published release auto-opens the winget / Homebrew bump PRs and self-bumps
+the Scoop manifest — the package-manager hash is always computed from the
+signed asset, never hand-typed (see `packaging/manifests/README.md`).
+
 ### Windows
 
-Download `<app>-<version>-x86_64-setup.exe` from the app's Releases page and run it. It installs per-machine under *Program Files*, creates a Start Menu entry, and (optionally) launches the app. An enterprise `.msi` is also available for Group Policy / Intune deployment.
+`winget install ItashaCorp.C0PL4ND`, or download `<app>-<version>-x86_64-setup.exe` from the app's Releases page and run it. It installs per-machine under *Program Files*, creates a Start Menu entry, and (optionally) launches the app. An enterprise `.msi` is also available for Group Policy / Intune deployment. Scoop (per-user) is an alternative: `scoop bucket add itasha-corp https://github.com/itasha-corp/scoop-bucket && scoop install itasha-corp/c0pl4nd`.
 
 ### macOS
 
-Open the `<app>-<version>.dmg` and drag the app to *Applications*. Signed + notarized builds pass Gatekeeper offline; unsigned dev builds run after a right-click → Open.
+`brew install --cask itasha-corp/tap/c0pl4nd` (installs `C0PL4ND.app` into */Applications*), or open the `<app>-<version>.dmg` and drag the app to *Applications*. Signed + notarized builds pass Gatekeeper offline; unsigned dev builds run after a right-click → Open.
 
 ### Linux
 

@@ -18,9 +18,21 @@ binary = "c0pl4nd"
 icon_ico = "branding/c0pl4nd/icon.ico"
 icon_png = "branding/c0pl4nd/icon-256.png"
 icon_icns = "branding/c0pl4nd/icon.icns"
-# Targets this app ships on.
-formats = ["nsis", "dmg", "appimage", "deb"]
+# Targets this app ships on. "zip" is the portable / no-install lane (a
+# config-next-to-binary build with no %APPDATA% dependency); see
+# docs/portable-mode.md.
+formats = ["nsis", "dmg", "appimage", "deb", "zip"]
 # Linux .deb dependency line for the GUI runtime.
 deb_depends = ["libc6", "libxkbcommon0", "libwayland-client0", "libfontconfig1"]
 # Freedesktop .desktop entry for Linux menu integration (packaging/linux/).
 desktop_file = "c0pl4nd.desktop"
+
+# --- Auto-update (cargo-packager-updater, minisign-signed self-hosted feed) ---
+# Public verification key (public material only; the committed keys/minisign.pub
+# content goes here at release time). The signing secret is NEVER here — it is
+# read by name from the CI secret MINISIGN_SECRET_KEY. Until the keypair exists,
+# the feed is gated-not-faked (no manifest published, loud warning).
+updater_pubkey = "${MINISIGN_PUBLIC_KEY}"
+# Self-hosted update endpoint (no third-party update service). The updater
+# expands {{target}}/{{arch}}/{{current_version}} at check time.
+updater_endpoint = "https://github.com/itasha-corp/c0pl4nd/releases/latest/download/latest.json"

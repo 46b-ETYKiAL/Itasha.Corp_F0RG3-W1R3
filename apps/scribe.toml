@@ -1,0 +1,22 @@
+# ============================================================================
+# Per-app override: SCR1B3 (second consumer — D1 reusability proof)
+# Merges over packager.template.toml. Keep this SMALL — only what differs.
+# Resolved Windows install dir = windows_install_root + install_subdir
+#   = "C:\Program Files\Itasha.Corp" + "SCR1B3"
+#   = "C:\Program Files\Itasha.Corp\SCR1B3"
+# ============================================================================
+
+[itasha.app]
+product_name = "SCR1B3"
+identifier = "corp.itasha.scr1b3"
+description = "Itasha.Corp note-taking and scribe app"
+long_description = "SCR1B3 is a fast, cross-platform note-taking app from Itasha.Corp."
+homepage = "https://github.com/itasha-corp/scr1b3"
+install_subdir = "SCR1B3"
+# Compiled binary consumed as a build input (never vendored source).
+binary = "scr1b3"
+icon_ico = "branding/scr1b3/icon.ico"
+icon_png = "branding/scr1b3/icon-256.png"
+icon_icns = "branding/scr1b3/icon.icns"
+formats = ["nsis", "dmg", "appimage", "deb"]
+desktop_file = "scr1b3.desktop"

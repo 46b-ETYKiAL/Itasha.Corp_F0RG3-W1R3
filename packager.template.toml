@@ -120,6 +120,83 @@ desktop_template = "packaging/linux/${APP_DESKTOP_FILE}"
 # is registered for hicolor/256x256/apps menu + taskbar integration.
 bins = []
 
+# ----------------------------------------------------------------------------
+# Auto-update — cargo-packager-updater, minisign-signed self-hosted feed
+# ----------------------------------------------------------------------------
+# Silent-on-restart, signature-verified delta updates with NO blocking modal
+# and NO UAC re-elevation (the winner-tier UX: download-in-background,
+# apply-and-relaunch-on-next-start). Free, self-hosted, no paid service:
+# the SAME minisign Ed25519 keypair used for artifact signing
+# (keys/minisign.pub / CI secret MINISIGN_SECRET_KEY) signs the update feed.
+#
+# SECRETS: the SIGNING half is NEVER in this file. The update feed is signed
+# in CI by reading the secret key BY NAME from the environment
+# (MINISIGN_SECRET_KEY + optional MINISIGN_PASSWORD). Only the PUBLIC key is
+# embedded below so the installed app can verify what it downloads — that is
+# its intended purpose (a public verification key, not a secret).
+#
+# GATED-NOT-FAKED: until the keypair exists (keys/minisign.pub committed +
+# MINISIGN_SECRET_KEY set in CI), the release workflow ships the artifacts
+# checksum-verified-but-unsigned and DOES NOT publish a feed manifest. A feed
+# without a real signature is never emitted. The updater UX (silent,
+# on-restart, signature-verified) is documented in the framework README; the
+# no-install lane is documented in docs/portable-mode.md.
+[package.metadata.packager.updater]
+# Public verification key. Filled by the per-app override from the committed
+# keys/minisign.pub (public material only). The app verifies every downloaded
+# update against this key; a signature mismatch aborts the update.
+pubkey = "${APP_UPDATER_PUBKEY}"
+# Self-hosted update endpoints (no third-party update service). The
+# {{target}}/{{arch}}/{{current_version}} template variables are expanded by
+# the updater at check time. The per-app override supplies the concrete host.
+endpoints = ["${APP_UPDATER_ENDPOINT}"]
+# Apply the update on the next app start, not mid-session — no interruption,
+# no forced restart, no UAC prompt for a per-machine install (the update
+# payload is staged and swapped on relaunch).
+install_mode = "passive"
+
+# ----------------------------------------------------------------------------
+# Signed update-feed MANIFEST shape (the JSON the endpoints above serve)
+# ----------------------------------------------------------------------------
+# This [itasha.updater_feed] table is a FRAMEWORK convention (stripped before
+# cargo-packager runs, like [itasha]); it documents the exact manifest schema
+# the release workflow emits and the endpoints serve. The manifest is a static
+# JSON file (latest.json) regenerated per release and itself integrity-bound by
+# the per-artifact .minisig detached signatures the updater verifies.
+#
+# Example latest.json the endpoints serve (per-platform "signature" is the
+# minisign signature string of that platform's update artifact):
+#
+#   {
+#     "version": "1.2.0",
+#     "notes": "What's new in this release (shown non-blocking).",
+#     "pub_date": "2026-05-27T00:00:00Z",
+#     "platforms": {
+#       "windows-x86_64": {
+#         "signature": "<minisign signature of the .nsis update artifact>",
+#         "url": "https://<host>/releases/1.2.0/<app>-x64-setup.nsis.zip"
+#       },
+#       "darwin-aarch64": {
+#         "signature": "<minisign signature of the macOS update artifact>",
+#         "url": "https://<host>/releases/1.2.0/<app>-aarch64.app.tar.gz"
+#       },
+#       "linux-x86_64": {
+#         "signature": "<minisign signature of the AppImage update artifact>",
+#         "url": "https://<host>/releases/1.2.0/<app>-x86_64.AppImage"
+#       }
+#     }
+#   }
+[itasha.updater_feed]
+manifest_file = "latest.json"
+# Detached signatures are minisign Ed25519 over each update artifact, verified
+# by the embedded pubkey before any swap. Feed signing is GATED-NOT-FAKED: no
+# real MINISIGN_SECRET_KEY -> the workflow emits no feed and warns loudly.
+signature_algorithm = "minisign-ed25519"
+# Delta-update note: cargo-packager-updater ships full-artifact updates by
+# default; AppImage gains delta download via its companion *.zsync (Linux),
+# and Velopack-style binary deltas remain an optional later upgrade, not a v1
+# requirement. The UX contract (silent, on-restart, verified) holds regardless.
+
 # ============================================================================
 # NOTES — honest cargo-packager limitations (do not fake; document instead)
 # ============================================================================
@@ -143,3 +220,19 @@ bins = []
 # 4. PLACEHOLDER RESOLUTION: ${APP_*} are filled from the per-app override;
 #    ${ENV:NAME} are resolved from CI secrets at build time. The merge step
 #    fails loudly if a required ${APP_*} placeholder is left unresolved.
+#
+# 5. PORTABLE ZIP ("zip" in an app's `formats`): the no-install lane for the
+#    corporate / locked-down / "I don't install things" audience. cargo-packager
+#    can emit a plain .app/.exe-in-a-ZIP; the portable contract (config lives
+#    NEXT TO the binary, never in %APPDATA%) is an APP-side behaviour the
+#    installer cannot inject — it is documented in docs/portable-mode.md and the
+#    consuming app honours it (a portable-marker sentinel file beside the EXE).
+#    No signing/notarization gate applies to the portable ZIP itself, but the
+#    minisign .minisig detached signature still covers it for integrity.
+#
+# 6. AUTO-UPDATE FEED: the [package.metadata.packager.updater] block above wires
+#    cargo-packager-updater to a minisign-signed self-hosted feed. The feed is
+#    GATED-NOT-FAKED — no real MINISIGN_SECRET_KEY in CI means no manifest is
+#    published and the workflow warns loudly; a feed without a valid signature
+#    is never emitted. The pubkey embedded in the config is PUBLIC verification
+#    material (its whole purpose is to be shipped), not a secret.

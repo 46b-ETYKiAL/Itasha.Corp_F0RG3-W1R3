@@ -1,11 +1,13 @@
-# Linux packaging — AppImage (primary) + `.deb` (secondary)
+# Linux packaging — AppImage (primary) + `.deb` (secondary) + Flathub (store)
 
-cargo-packager produces two Linux artifacts from one config:
+cargo-packager produces two Linux artifacts from one config; a Flathub manifest
+adds a third, store-managed distribution track:
 
 | Format | Role | Why |
 |--------|------|-----|
-| **AppImage** | Primary (portable) | Single-file, runs on any modern distro, no root, no package manager. |
+| **AppImage** | Primary (portable) | Single-file, runs on any modern distro, no root, no package manager. Delta-updates via zsync (see `appimage-update.md`). |
 | **`.deb`** | Secondary | APT integration for Debian / Ubuntu fleets. |
+| **Flatpak / Flathub** | Store discoverability | Flathub is the 2026 de-facto Linux desktop store. Manifest: `org.itashacorp.C0PL4ND.yaml` + `org.itashacorp.C0PL4ND.metainfo.xml`. Submission is an owner-authorized publish step. |
 
 ## Files
 
@@ -13,6 +15,9 @@ cargo-packager produces two Linux artifacts from one config:
 |------|---------|
 | `c0pl4nd.desktop` | Freedesktop `.desktop` entry — `Categories=System;Utility;TerminalEmulator;`, `Icon=c0pl4nd`, `StartupWMClass` for taskbar grouping. |
 | `install.sh` | One-line user-scope installer for a downloaded AppImage: copies to `~/.local/bin`, registers the `.desktop` + 256px icon, verifies a `.sha256` sidecar if present, refreshes the desktop/icon caches. |
+| `org.itashacorp.C0PL4ND.yaml` | flatpak-builder manifest for the Flathub store track (binary-as-artifact; submission is owner-gated). |
+| `org.itashacorp.C0PL4ND.metainfo.xml` | AppStream metainfo required by Flathub (public product metadata only). |
+| `appimage-update.md` | zsync + AppImageUpdate delta-update path for the portable AppImage (free, self-hosted). |
 
 ## Desktop-entry + icon integration
 

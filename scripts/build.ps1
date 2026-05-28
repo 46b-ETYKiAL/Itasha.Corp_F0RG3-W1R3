@@ -42,12 +42,25 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $ResolvedBinary = $Binary
 if ([string]::IsNullOrEmpty($ResolvedBinary)) { $ResolvedBinary = $env:ITASHA_BINARY_PATH }
 
+# Merge template + override into a cargo-packager-acceptable config.
+# Closes Gap A from qa-report-2026-05-28.md (per-app override uses the
+# framework's [itasha.app] shape which cargo-packager rejects directly).
+$MergedConfig = Join-Path $Root "packaging/build/$App.packager.toml"
+Write-Host "==> Merging template + override -> $MergedConfig"
+$mergeArgs = @($App, "--root", $Root, "--output", $MergedConfig)
+if (-not [string]::IsNullOrEmpty($ResolvedBinary)) {
+    $mergeArgs += @("--binary-path", $ResolvedBinary)
+}
+& python (Join-Path $Root "tests/merge_config.py") @mergeArgs
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 if ($DryRun) {
-    Write-Host "==> Dry run: config resolves; skipping cargo-packager invocation."
+    Write-Host "==> Dry run: merged config resolves; skipping cargo-packager invocation."
+    Write-Host "    merged config: $MergedConfig"
     if (-not [string]::IsNullOrEmpty($ResolvedBinary)) {
-        Write-Host "    binary input: $ResolvedBinary"
+        Write-Host "    binary input:  $ResolvedBinary"
     } else {
-        Write-Host "    binary input: (none supplied — dry run uses a placeholder)"
+        Write-Host "    binary input:  (none supplied — dry run uses a placeholder)"
     }
     exit 0
 }
@@ -73,11 +86,11 @@ if ($null -eq $cp) {
     exit 127
 }
 
-Write-Host "==> Invoking cargo-packager for app '$App'"
+Write-Host "==> Invoking cargo-packager for app '$App' with merged config"
 Push-Location $Root
 try {
     $env:ITASHA_BINARY_PATH = $ResolvedBinary
-    & cargo-packager --config "apps/$App.toml"
+    & cargo-packager --config $MergedConfig
     exit $LASTEXITCODE
 } finally {
     Pop-Location

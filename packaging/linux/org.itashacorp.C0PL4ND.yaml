@@ -1,0 +1,87 @@
+# ============================================================================
+# Flathub / flatpak-builder manifest — C0PL4ND terminal (Linux store track)
+# ============================================================================
+# This is the DEFERRED Flathub-discoverability track promised by the Linux
+# packaging plan, delivered as a concrete artifact instead of a promise. The
+# AppImage (portable) + .deb (APT) remain the primary/secondary Linux formats;
+# Flatpak adds Flathub store reach.
+#
+# The Flatpak app-id MUST equal this file's basename (org.itashacorp.C0PL4ND),
+# per flatpak-builder. It is a reverse-DNS identifier for the Flathub store
+# listing only; it does not change the cargo-packager `identifier` used by the
+# AppImage/.deb track.
+#
+# BINARY-AS-ARTIFACT: like every other format in this framework, the build
+# consumes the app's ALREADY-COMPILED binary as an input (sources: a release
+# tarball or the extracted binary), NEVER the application source tree. The
+# `sources` entries below point at a published release artifact + checksum, in
+# line with ships-publicly-vs-never.md rule 1 (binary-as-artifact, never-vendor
+# -source).
+#
+# SUBMISSION to Flathub is a separate, owner-authorized publish step
+# (website_publish_consent_required). This manifest is a framework deliverable;
+# pushing it to the flathub/flathub submission repo is NOT done by the build.
+# ----------------------------------------------------------------------------
+app-id: org.itashacorp.C0PL4ND
+
+# Freedesktop runtime/SDK pinned to an explicit branch (no floating "stable").
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+
+# Entry-point command installed into /app/bin (matches the .desktop Exec).
+command: c0pl4nd
+
+# Terminal-emulator finish-args. Scoped as tightly as a working terminal allows
+# (NOT blanket --filesystem=host). Rationale per arg is in packaging/linux/
+# appimage-update.md and the Flathub sandbox-permission guidance.
+finish-args:
+  # GPU-accelerated rendering surface (wayland preferred, x11 fallback).
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # A terminal must spawn login shells / programs on the host; the portal-
+  # backed host-command access is the supported sandboxed mechanism.
+  - --talk-name=org.freedesktop.Flatpak
+  # The user's working files live under home; grant home rather than the whole
+  # host filesystem (least-privilege vs --filesystem=host).
+  - --filesystem=home
+  # Read the user's shell + locale configuration.
+  - --filesystem=xdg-config/environment.d:ro
+  # System font access for ligature/glyph rendering.
+  - --filesystem=xdg-config/fontconfig:ro
+
+# Drop static libs / headers / .a archives from the final tree.
+cleanup:
+  - "*.a"
+  - "*.la"
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+
+modules:
+  - name: c0pl4nd
+    buildsystem: simple
+    build-commands:
+      # Install the pre-built binary (consumed as an artifact, not compiled
+      # from vendored source) plus the freedesktop integration files.
+      - install -Dm755 c0pl4nd /app/bin/c0pl4nd
+      - install -Dm644 c0pl4nd.desktop /app/share/applications/org.itashacorp.C0PL4ND.desktop
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/org.itashacorp.C0PL4ND.png
+      - install -Dm644 org.itashacorp.C0PL4ND.metainfo.xml /app/share/metainfo/org.itashacorp.C0PL4ND.metainfo.xml
+    sources:
+      # Published release artifact + its checksum. The placeholder URL/sha are
+      # resolved at submission time from the signed release; no binary is
+      # committed to this repo (ships-publicly-vs-never.md rule 1).
+      - type: file
+        url: https://github.com/itasha-corp/c0pl4nd/releases/latest/download/c0pl4nd-linux-x86_64
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+        dest-filename: c0pl4nd
+      - type: file
+        path: c0pl4nd.desktop
+      - type: file
+        path: ../../branding/c0pl4nd/icon-256.png
+        dest-filename: icon-256.png
+      - type: file
+        path: org.itashacorp.C0PL4ND.metainfo.xml

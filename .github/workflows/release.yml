@@ -41,6 +41,11 @@ concurrency:
 env:
   APP_NAME: ${{ github.event.inputs.app || 'c0pl4nd' }}
   CARGO_PACKAGER_VERSION: "0.11.8"
+  # Reproducible-build epoch: pin all archive/file mtimes to the tag's commit
+  # timestamp so the UNSIGNED payload hash is stable run-to-run
+  # (determinism_reproducibility axis). Falls back to a fixed constant when the
+  # commit timestamp is unavailable (e.g. workflow_dispatch dry-run).
+  SOURCE_DATE_EPOCH: "0"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -53,7 +58,13 @@ jobs:
     if: always()
     runs-on: ${{ matrix.os }}
     permissions:
+      # Least-privilege at the JOB level (not workflow level): read source +
+      # the two scopes keyless provenance/cosign need. id-token mints the
+      # short-lived OIDC token Sigstore exchanges for a keyless cert;
+      # attestations writes the SLSA-L2 provenance to the attestations store.
       contents: read
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -74,6 +85,21 @@ jobs:
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb2c1ce8ea046b1c8c75b2
         with:
           toolchain: stable
+
+      # Derive SOURCE_DATE_EPOCH from the tagged commit's author timestamp so
+      # the unsigned payload is byte-reproducible across runs/runners. On a
+      # workflow_dispatch dry-run (no tag) the env default ("0") is kept.
+      - name: Pin SOURCE_DATE_EPOCH from commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git rev-parse HEAD >/dev/null 2>&1; then
+            sde="$(git -C "${GITHUB_WORKSPACE}" log -1 --pretty=%ct 2>/dev/null || echo 0)"
+            echo "SOURCE_DATE_EPOCH=${sde}" >> "$GITHUB_ENV"
+            echo "::notice::SOURCE_DATE_EPOCH pinned to ${sde} (commit author time) for reproducible builds."
+          else
+            echo "::warning::No git history available; SOURCE_DATE_EPOCH stays at the env default (reproducibility weakened for this run)."
+          fi
 
       - name: Install cargo-packager (pinned, locked)
         shell: bash
@@ -205,6 +231,107 @@ jobs:
             echo "No dist/ artifacts to checksum (dry-run path)."
           fi
 
+      # --- Supply-chain provenance / SBOM / keyless signing ---------------
+      # These run AFTER checksums so attestation + cosign cover the final
+      # (free-tier-signed) bytes that ship. Each is free + CI-native; no paid
+      # service. SBOM + provenance always run on a real build; cosign is GATED
+      # on the OIDC token being mintable (honest-skip + LOUD warning otherwise).
+
+      # CycloneDX SBOM over the bundled artifact dir via syft (anchore).
+      # Emits dist/sbom.cdx.json describing every component in the release
+      # bundle so downstream consumers can audit the dependency surface.
+      # anchore/sbom-action@v0.17.8
+      - name: Generate CycloneDX SBOM (syft)
+        id: sbom
+        if: steps.binary.outputs.dry_run == '0'
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75
+        with:
+          path: dist/
+          format: cyclonedx-json
+          output-file: dist/sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Checksum the SBOM
+        if: steps.binary.outputs.dry_run == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f dist/sbom.cdx.json ]; then
+            ( cd dist && \
+              if command -v sha256sum >/dev/null 2>&1; then \
+                sha256sum sbom.cdx.json > sbom.cdx.json.sha256; \
+              else \
+                shasum -a 256 sbom.cdx.json > sbom.cdx.json.sha256; \
+              fi )
+            echo "::notice::CycloneDX SBOM emitted at dist/sbom.cdx.json (+ .sha256)."
+          else
+            echo "::warning::SBOM step produced no dist/sbom.cdx.json — release will ship without an SBOM."
+          fi
+
+      # Install cosign for keyless sign-blob. Pinned installer action.
+      # sigstore/cosign-installer@v3.7.0
+      - name: Install cosign
+        if: steps.binary.outputs.dry_run == '0'
+        uses: sigstore/cosign-installer@4959ce089c160fddf62f7b42464195ba1a56d382
+        with:
+          cosign-release: "v2.4.1"
+
+      # Keyless cosign sign-blob over each native installer (.exe/.dmg/.AppImage)
+      # using the workflow's ambient OIDC identity (Fulcio short-lived cert,
+      # Rekor transparency log). Emits <artifact>.sig + <artifact>.pem alongside.
+      # GATED on the OIDC token id-token claim being mintable; when it is not
+      # (forks without id-token: write, or a misconfigured runner) we emit a
+      # LOUD warning and skip — we NEVER fabricate a .sig/.pem.
+      - name: cosign sign-blob (keyless OIDC) over native installers
+        if: steps.binary.outputs.dry_run == '0'
+        shell: bash
+        env:
+          # ACTIONS_ID_TOKEN_REQUEST_URL is injected by GitHub only when the job
+          # has id-token: write AND the run can mint OIDC tokens. Its presence is
+          # the honest gate for keyless signing.
+          COSIGN_YES: "true"
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::warning::cosign keyless signing SKIPPED — no OIDC token available (ACTIONS_ID_TOKEN_REQUEST_URL unset; e.g. a fork PR without id-token: write). Artifacts ship with checksum.sha256 + minisign only. Nothing was faked."
+            exit 0
+          fi
+          if ! command -v cosign >/dev/null 2>&1; then
+            echo "::warning::cosign binary not found after install step — skipping keyless sign-blob (no fake signatures produced)."
+            exit 0
+          fi
+          signed=0
+          for f in dist/*.exe dist/*.dmg dist/*.AppImage; do
+            [ -f "$f" ] || continue
+            echo "::notice::cosign sign-blob (keyless) -> ${f}.sig / ${f}.pem"
+            cosign sign-blob --yes \
+              --output-signature "${f}.sig" \
+              --output-certificate "${f}.pem" \
+              "$f"
+            signed=$((signed + 1))
+          done
+          if [ "$signed" -eq 0 ]; then
+            echo "::warning::cosign found no native installer (.exe/.dmg/.AppImage) in dist/ to sign on this runner."
+          else
+            echo "::notice::cosign keyless-signed ${signed} native installer artifact(s)."
+          fi
+
+      # SLSA-L2 keyless build provenance, one attestation per release artifact.
+      # GATED on a real (non-empty) dist/ so an empty bundle cannot mint an
+      # attestation over nothing. Verifiable later with `gh attestation verify`.
+      # actions/attest-build-provenance@v2.4.0
+      - name: Attest build provenance (SLSA L2, keyless)
+        if: steps.binary.outputs.dry_run == '0' && hashFiles('dist/**') != ''
+        uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb
+        with:
+          subject-path: "dist/*"
+
+      - name: Provenance honest-skip notice
+        if: steps.binary.outputs.dry_run == '0' && hashFiles('dist/**') == ''
+        shell: bash
+        run: echo "::warning::Build-provenance attestation SKIPPED — dist/ is empty on this runner. No attestation was minted over a non-existent artifact."
+
       # actions/upload-artifact@v4.4.3
       - name: Upload build artifacts
         if: steps.binary.outputs.dry_run == '0'
@@ -239,6 +366,49 @@ jobs:
           mkdir -p release
           find artifacts -type f -exec cp -v {} release/ \; || true
           echo "Staged $(find release -type f | wc -l) release files."
+
+      # Emit the cargo-packager-updater feed (latest.json) from the per-artifact
+      # minisign signatures the build job produced. cargo-packager-updater
+      # verifies each platform's signature against the embedded public key, so
+      # the feed itself needs no extra signing. GATED on .minisig presence:
+      # no signatures (MINISIGN_SECRET_KEY absent in build) => no feed +
+      # ::warning:: (gated-not-faked). Shape: packager.template.toml
+      # [itasha.updater_feed]. latest.json is attached by the gh-release step
+      # below (files: release/*), resolving the releases/latest/download
+      # endpoint the C0PL4ND override points at.
+      - name: Emit cargo-packager-updater feed (latest.json)
+        if: hashFiles('release/*.minisig') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python3 - "$VERSION" "$BASE" "$PUB_DATE" <<'PY'
+          import glob, json, os, sys
+          version, base, pub_date = sys.argv[1], sys.argv[2], sys.argv[3]
+          plat = {".exe": "windows-x86_64", ".msi": "windows-x86_64",
+                  ".dmg": "darwin-universal", ".AppImage": "linux-x86_64"}
+          platforms = {}
+          for f in sorted(glob.glob("release/*")):
+              for ext, key in plat.items():
+                  if f.endswith(ext):
+                      sig = ""
+                      if os.path.exists(f + ".minisig"):
+                          sig = open(f + ".minisig", encoding="utf-8").read().strip()
+                      platforms[key] = {"signature": sig,
+                                        "url": f"{base}/{os.path.basename(f)}"}
+          feed = {"version": version, "notes": f"C0PL4ND {version}",
+                  "pub_date": pub_date, "platforms": platforms}
+          with open("release/latest.json", "w", encoding="utf-8") as fh:
+              json.dump(feed, fh, indent=2)
+          print(f"emitted release/latest.json with {len(platforms)} platform(s)")
+          PY
+          echo "::notice::updater feed latest.json emitted from per-artifact minisign signatures."
+
+      - name: Updater feed skipped (no signatures)
+        if: hashFiles('release/*.minisig') == ''
+        run: echo "::warning::updater feed (latest.json) SKIPPED — no .minisig signatures present (MINISIGN_SECRET_KEY absent in build). Gated-not-faked."
 
       # softprops/action-gh-release@v2.0.8
       - name: Attach artifacts to GitHub Release

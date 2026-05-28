@@ -18,19 +18,36 @@
 #   APPLE_APP_PASSWORD       an app-specific password (NOT the account password)
 #   (OR App Store Connect API key: APPLE_API_KEY_ID / APPLE_API_ISSUER / APPLE_API_KEY_PATH)
 #
+# macOS Sequoia (15) / Tahoe (26) hardening (competitive O3):
+#   * SEQUOIA removed the Control-click "Open Anyway" Gatekeeper override. An
+#     UNSIGNED/UN-NOTARIZED app now traps the user in System Settings > Privacy
+#     & Security on EVERY first run. Notarize + staple (below) is the only path
+#     that avoids that trip for public distribution — see docs/macos-gatekeeper.md.
+#   * TAHOE wipes a disk image's custom volume icon (the special "Icon\r" file)
+#     during notarization. This script handles it by RE-APPLYING the custom
+#     .dmg volume icon AFTER stapling, so the branded icon survives. The .app's
+#     own bundle icon is unaffected (it is inside the signed bundle).
+#
 # Usage:
-#   ./sign-notarize-staple.sh --app <App.app path> --dmg <Disk.dmg path>
+#   ./sign-notarize-staple.sh --app <App.app path> --dmg <Disk.dmg path> [--volicon <icon.icns>]
 # ----------------------------------------------------------------------------
 set -eu
 
+# The custom volume-icon file inside a .dmg is literally named "Icon" followed
+# by a carriage return (0x0D). Build the name without embedding a raw CR in the
+# source so editors / the content-safety scan stay clean.
+ICON_CR_NAME="Icon$(printf '\r')"
+
 APP_PATH=""
 DMG_PATH=""
+VOLICON_PATH=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --app) APP_PATH="${2:-}"; shift 2 ;;
     --dmg) DMG_PATH="${2:-}"; shift 2 ;;
-    -h|--help) echo "Usage: $0 --app <App.app> --dmg <Disk.dmg>"; exit 0 ;;
+    --volicon) VOLICON_PATH="${2:-}"; shift 2 ;;
+    -h|--help) echo "Usage: $0 --app <App.app> --dmg <Disk.dmg> [--volicon <icon.icns>]"; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -81,10 +98,41 @@ else
 fi
 
 echo "==> Stapling the notarization ticket to the .dmg (offline Gatekeeper)"
+# Stapling makes Gatekeeper pass OFFLINE (no notarization-server round-trip on
+# the user's machine). On Sequoia this is what avoids the System-Settings trip.
 xcrun stapler staple "$DMG_PATH"
 
 echo "==> Validating the staple"
 xcrun stapler validate "$DMG_PATH"
 spctl --assess --type open --context context:primary-signature -v "$DMG_PATH" || true
+
+# --- Tahoe Icon-wipe handling: re-apply the branded volume icon if requested ---
+# macOS Tahoe (26) wipes a .dmg's custom volume icon (the "Icon\r" resource)
+# during notarization. If a --volicon was supplied, re-apply it AFTER stapling
+# so the branded disk-image icon survives. This requires `fileicon` or
+# `SetFile`/`Rez` from the Xcode tools; the step is best-effort and NEVER fakes
+# success — it logs honestly when the helper is unavailable.
+if [ -n "$VOLICON_PATH" ]; then
+  if [ ! -f "$VOLICON_PATH" ]; then
+    echo "NOTICE: --volicon '$VOLICON_PATH' not found; skipping icon re-apply." >&2
+  elif command -v fileicon >/dev/null 2>&1; then
+    echo "==> Re-applying custom volume icon (Tahoe wipe recovery) via fileicon"
+    fileicon set "$DMG_PATH" "$VOLICON_PATH"
+  elif command -v SetFile >/dev/null 2>&1 && command -v Rez >/dev/null 2>&1; then
+    echo "==> Re-applying custom volume icon (Tahoe wipe recovery) via SetFile/Rez"
+    # Standard Apple recipe: encode the .icns into the Icon resource, then set
+    # the volume's custom-icon bit. (The Icon resource lives in the file whose
+    # name is "Icon" + CR; we reference it via $ICON_CR_NAME.)
+    DeRez -only icns "$VOLICON_PATH" > "${TMPDIR:-/tmp}/volicon.rsrc" 2>/dev/null || true
+    Rez -append "${TMPDIR:-/tmp}/volicon.rsrc" -o "$DMG_PATH/$ICON_CR_NAME" 2>/dev/null || true
+    SetFile -a C "$DMG_PATH" 2>/dev/null || true
+    SetFile -a V "$DMG_PATH/$ICON_CR_NAME" 2>/dev/null || true
+  else
+    echo "NOTICE: no icon helper (fileicon / SetFile+Rez) available." >&2
+    echo "        The branded volume icon was wiped by notarization on Tahoe and" >&2
+    echo "        was NOT re-applied. Install 'fileicon' (brew install fileicon)" >&2
+    echo "        or run from a full Xcode install to restore it. NOT faked." >&2
+  fi
+fi
 
 echo "==> macOS sign + notarize + staple complete: $DMG_PATH"

@@ -31,7 +31,7 @@
   <rect x="0" y="0" width="1280" height="500" rx="14" fill="#111118"/>
   <rect x="2" y="2" width="1276" height="496" rx="13" fill="#18181f" stroke="#2a2833" stroke-width="1"/>
   <line x1="24" y1="13" x2="1256" y2="13" stroke="#2a2833" stroke-width="0.5"/>
-  <line x1="24" y1="487" x2="1256" y2="487" stroke="#2a2833" stroke-width="0.5"/>
+  <line x1="24" y1="480" x2="1256" y2="480" stroke="#2a2833" stroke-width="0.5"/>
   <rect x="28" y="22" width="1224" height="452" rx="6" fill="#08060d"/>
 
   <g clip-path="url(#sc)">
@@ -117,10 +117,13 @@
     </g>
   </g>
 
-  <circle cx="50" cy="470" r="4" fill="#01fe36" opacity="0.55" style="animation: heartbeat 2.4s ease-in-out infinite;"/>
-  <circle cx="64" cy="470" r="3" fill="#00fffe" opacity="0.4"/>
-  <circle cx="76" cy="470" r="3" fill="#5a5869" opacity="0.3"/>
-  <text x="96" y="473" font-size="9" fill="#2a2833" letter-spacing="2">ITASHA.CORP</text>
-  <text x="1116" y="473" font-size="9" fill="#2a2833">CRT-IC // FORGE</text>
-  <circle cx="1232" cy="470" r="5" fill="#01fe36" style="animation: heartbeat 2.4s ease-in-out infinite;"/>
+  <g transform="translate(0,16)">
+    <circle cx="52" cy="474" r="3.5" fill="#01fe36" opacity="0.7" style="animation: heartbeat 2.4s ease-in-out infinite;"/>
+    <circle cx="65" cy="474" r="3" fill="#00fffe" opacity="0.45"/>
+    <circle cx="78" cy="474" r="3" fill="#5a5869" opacity="0.3"/>
+    <text x="98" y="477" font-size="9" fill="#3a3848" letter-spacing="2">ITASHA.CORP</text>
+    <text x="1116" y="477" font-size="9" fill="#3a3848">CRT-IC // FORGE</text>
+    <circle cx="1238" cy="474" r="4" fill="#01fe36" opacity="0.5"/>
+    <circle cx="1238" cy="474" r="2" fill="#01fe36" opacity="0.95" style="animation: heartbeat 2.4s ease-in-out infinite;"/>
+  </g>
 </svg>

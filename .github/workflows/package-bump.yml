@@ -1,0 +1,197 @@
+name: Package-manager auto-bump
+
+# On a published release, open auto-bump PRs to the winget-pkgs and Homebrew
+# tap repositories. Each package-manager action computes the InstallerSha256
+# itself directly from the signed release asset, so a hash is NEVER hand-typed
+# or copied — this structurally closes the WezTerm #7713 hash-drift class
+# (manual InstallerSha256 drifting from the published binary).
+#
+# Scoop needs no bump action: its manifest carries checkver + autoupdate blocks
+# (see packaging/manifests/scoop/c0pl4nd.json) and the Scoop bucket's own
+# `scoop update` cron resolves the new version + hash autonomously.
+#
+# HONEST-SKIP DISCIPLINE: every bump step is gated on the signed release asset
+# actually existing on the release. When an asset is absent (unsigned dev tag,
+# dry-run, or a release published before the artifact upload completed), the
+# step emits a loud `::warning::` and is skipped — it NEVER fabricates a hash or
+# opens a PR against a binary that is not there.
+#
+# SUBMISSION IS USER-GATED: the bump actions open PRs to the package-manager
+# repos. Those PRs require a maintainer to merge them (winget-pkgs moderation /
+# Homebrew tap review). Opening a bump PR is not an unattended production deploy
+# of the package; it is the start of the package-manager review flow.
+#
+# All third-party actions are pinned by full commit SHA (tj-actions Mar-2025
+# supply-chain lesson). Update a pin only alongside its version comment.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to bump (no leading v), e.g. 1.2.3 — dry-run only; emits warnings unless assets exist"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-bump-${{ github.event.release.tag_name || inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Resolve the version + probe whether the signed installer assets exist on the
+  # release. Downstream bump jobs gate on these outputs (honest-skip).
+  # ---------------------------------------------------------------------------
+  detect-assets:
+    name: Detect signed release assets
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.probe.outputs.version }}
+      has_windows: ${{ steps.probe.outputs.has_windows }}
+      has_macos: ${{ steps.probe.outputs.has_macos }}
+    steps:
+      - name: Harden the runner (egress audit)
+        # step-security/harden-runner@v2.19.4
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - name: Probe release assets
+        id: probe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          # Resolve the version with or without a leading v, from either trigger.
+          if [ -n "${TAG:-}" ]; then
+            VERSION="${TAG#v}"
+            REF_TAG="${TAG}"
+          else
+            VERSION="${INPUT_VERSION#v}"
+            REF_TAG="v${VERSION}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # List the release assets by name (no download). A release with no
+          # matching signed asset yields empty -> honest-skip downstream.
+          ASSETS="$(gh release view "${REF_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json assets \
+            --jq '.assets[].name' 2>/dev/null || true)"
+
+          HAS_WIN=false
+          HAS_MAC=false
+          if printf '%s\n' "${ASSETS}" | grep -Eiq '(-setup\.exe|\.nsis\.exe|\.exe)$'; then
+            HAS_WIN=true
+          fi
+          if printf '%s\n' "${ASSETS}" | grep -Eiq '\.dmg$'; then
+            HAS_MAC=true
+          fi
+          echo "has_windows=${HAS_WIN}" >> "$GITHUB_OUTPUT"
+          echo "has_macos=${HAS_MAC}" >> "$GITHUB_OUTPUT"
+
+          if [ "${HAS_WIN}" = "false" ]; then
+            echo "::warning title=winget bump skipped::No Windows .exe asset on release ${REF_TAG}; winget bump will be skipped (honest-skip — no hash fabricated)."
+          fi
+          if [ "${HAS_MAC}" = "false" ]; then
+            echo "::warning title=homebrew bump skipped::No macOS .dmg asset on release ${REF_TAG}; Homebrew bump will be skipped (honest-skip — no hash fabricated)."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # winget — WinGet Releaser invokes Komac, which downloads the signed .exe and
+  # computes InstallerSha256 itself, then opens a PR to microsoft/winget-pkgs.
+  # No manual hash. Gated on the Windows asset existing.
+  # ---------------------------------------------------------------------------
+  winget:
+    name: winget auto-bump (Komac via WinGet Releaser)
+    needs: detect-assets
+    if: always() && needs.detect-assets.outputs.has_windows == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner (egress audit)
+        # step-security/harden-runner@v2.19.4
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - name: Open winget-pkgs bump PR
+        # vedantmgoyal9/winget-releaser@v2 — invokes Komac; auto-computes
+        # InstallerSha256 from the signed asset (closes WezTerm #7713).
+        uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e
+        with:
+          identifier: ItashaCorp.C0PL4ND
+          version: ${{ needs.detect-assets.outputs.version }}
+          # Token for the fork used to open the PR to microsoft/winget-pkgs.
+          # Stored as a repo secret by name only (never inlined). Absent token
+          # → the action fails loudly; it never silently no-ops.
+          token: ${{ secrets.WINGET_PKGS_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Homebrew — bump-cask downloads the signed .dmg, computes its sha256, and
+  # opens a bump PR to the tap. No manual hash. Gated on the macOS asset.
+  # ---------------------------------------------------------------------------
+  homebrew:
+    name: Homebrew cask auto-bump (brew bump-cask-pr)
+    needs: detect-assets
+    if: always() && needs.detect-assets.outputs.has_macos == 'true'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner (egress audit)
+        # step-security/harden-runner@v2.19.4
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - name: Open Homebrew cask bump PR
+        # macauley/action-homebrew-bump-cask@v1.0.0 — wraps `brew bump-cask-pr`;
+        # recomputes the .dmg sha256 from the asset (no hand-typed hash).
+        uses: macauley/action-homebrew-bump-cask@445c42390d790569d938f9068d01af39ca030feb
+        with:
+          # Token for the tap PR; repo secret by name only.
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          tap: itasha-corp/homebrew-tap
+          cask: c0pl4nd
+          tag: ${{ github.event.release.tag_name }}
+          revision: ${{ github.sha }}
+          force: false
+
+  # ---------------------------------------------------------------------------
+  # Gate — single required check. ALWAYS runs (merge-queue skipped!=success
+  # discipline). Passes when no bump job ended in failure; an honest-skip
+  # (asset absent) is success, not failure.
+  # ---------------------------------------------------------------------------
+  bump-gate:
+    name: Package-bump gate
+    needs: [detect-assets, winget, homebrew]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify no bump job failed
+        run: |
+          set -euo pipefail
+          echo "winget   = ${{ needs.winget.result }}"
+          echo "homebrew = ${{ needs.homebrew.result }}"
+          echo "Scoop self-bumps via its manifest checkver/autoupdate blocks — no job here."
+          for r in "${{ needs.winget.result }}" "${{ needs.homebrew.result }}"; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::A package-bump job ended in '$r'."; exit 1 ;;
+            esac
+          done
+          echo "Package-bump gate OK (failures: none; honest-skips allowed)."

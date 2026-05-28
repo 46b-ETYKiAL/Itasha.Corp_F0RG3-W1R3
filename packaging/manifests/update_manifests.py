@@ -10,6 +10,19 @@ It NEVER hand-edits hashes — it derives them from the actual artifact bytes, s
 a published manifest can never drift from the file it points at (the WezTerm
 #7713 hash-drift footgun).
 
+AUTOMATION (preferred): the WezTerm #7713 hash-drift class is now closed
+STRUCTURALLY by the managed package-manager auto-bump workflow
+(``.github/workflows/package-bump.yml``): WinGet Releaser (Komac) and Homebrew
+bump-cask each download the signed release asset and compute the hash
+themselves before opening a bump PR, and the Scoop manifest carries
+``checkver`` + ``autoupdate`` so ``scoop update`` recomputes the hash
+autonomously. No manual SHA edit is ever required in the published flow.
+
+This script remains valid and useful as the OFFLINE / LOCAL fallback: it
+resolves the manifest templates from artifact bytes on disk for inspection or
+for a manual, user-authorized submission when the managed actions are not in
+play. It still NEVER hand-edits a hash.
+
 GATING: if no installer artifact is found for a given platform, that platform's
 manifest is skipped with a loud structured message and the script exits 0
 (nothing to resolve is not an error). A usage/IO error exits 2.
