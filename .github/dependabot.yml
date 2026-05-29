@@ -13,6 +13,12 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # Wait out the highest-risk window after a new release before opening a
+    # bump PR (zizmor dependabot-cooldown). A freshly-published (and possibly
+    # compromised) Action version is most dangerous in its first days — the
+    # tj-actions Mar-2025 supply-chain lesson the release workflow cites.
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 10
     commit-message:
       prefix: "ci"
