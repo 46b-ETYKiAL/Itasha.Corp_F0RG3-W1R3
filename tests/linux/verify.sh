@@ -21,21 +21,36 @@
 # ----------------------------------------------------------------------------
 set -eu
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 # shellcheck source=../matrix/_lib.sh
 . "$SCRIPT_DIR/../matrix/_lib.sh"
-ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
+ROOT="$(CDPATH='' cd -- "$SCRIPT_DIR/../.." && pwd)"
 
 APPIMAGE=""
 DEB=""
 DESKTOP="$ROOT/packaging/linux/c0pl4nd.desktop"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --appimage) APPIMAGE="${2:-}"; shift 2 ;;
-    --deb) DEB="${2:-}"; shift 2 ;;
-    --desktop) DESKTOP="${2:-}"; shift 2 ;;
-    -h|--help) echo "Usage: $0 [--appimage <file>] [--deb <file>] [--desktop <file>]"; exit 0 ;;
-    *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
+    --appimage)
+      APPIMAGE="${2:-}"
+      shift 2
+      ;;
+    --deb)
+      DEB="${2:-}"
+      shift 2
+      ;;
+    --desktop)
+      DESKTOP="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
+      echo "Usage: $0 [--appimage <file>] [--deb <file>] [--desktop <file>]"
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
@@ -81,7 +96,7 @@ if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
   chmod +x "$APPIMAGE" 2>/dev/null || true
   # Extract and confirm the internal .desktop is present + valid.
   _tmp="$(mktemp -d)"
-  if ( cd "$_tmp" && "$APPIMAGE" --appimage-extract >/dev/null 2>&1 ); then
+  if (cd "$_tmp" && "$APPIMAGE" --appimage-extract >/dev/null 2>&1); then
     _internal_desktop="$(find "$_tmp" -maxdepth 3 -name '*.desktop' 2>/dev/null | head -n1)"
     if [ -n "$_internal_desktop" ]; then
       pass "AppImage extracts and contains a .desktop entry"

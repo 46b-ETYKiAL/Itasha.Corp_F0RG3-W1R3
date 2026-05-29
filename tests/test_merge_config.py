@@ -16,13 +16,12 @@ Stdlib-only (pytest harness; no third-party dependencies).
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 import pytest
+import tomllib
 
 # Import the module under test directly.
 HERE = Path(__file__).resolve().parent
@@ -31,10 +30,10 @@ sys.path.insert(0, str(HERE))
 
 import merge_config  # noqa: E402
 
-
 # --------------------------------------------------------------------------
 # Fixtures
 # --------------------------------------------------------------------------
+
 
 @pytest.fixture
 def template_path() -> Path:
@@ -54,6 +53,7 @@ def scribe_override() -> Path:
 # --------------------------------------------------------------------------
 # Placeholder substitution
 # --------------------------------------------------------------------------
+
 
 def test_resolves_app_placeholders_from_override_keys(template_path, c0pl4nd_override):
     doc = merge_config.merge(template_path, c0pl4nd_override)
@@ -102,25 +102,32 @@ def test_binary_entry_pruned_when_no_path(template_path, c0pl4nd_override):
     assert not doc.get("binaries"), "binaries entry should be pruned"
 
 
-def test_env_placeholder_resolves_when_set(template_path, c0pl4nd_override, monkeypatch):
+def test_env_placeholder_resolves_when_set(
+    template_path, c0pl4nd_override, monkeypatch
+):
     monkeypatch.setenv("APPLE_SIGNING_IDENTITY", "Developer ID Application: Itasha")
     doc = merge_config.merge(template_path, c0pl4nd_override)
     assert "macos" in doc
     assert doc["macos"]["signing_identity"] == "Developer ID Application: Itasha"
 
 
-def test_env_placeholder_pruned_when_unset(template_path, c0pl4nd_override, monkeypatch):
+def test_env_placeholder_pruned_when_unset(
+    template_path, c0pl4nd_override, monkeypatch
+):
     monkeypatch.delenv("APPLE_SIGNING_IDENTITY", raising=False)
     doc = merge_config.merge(template_path, c0pl4nd_override)
     # macos block may still exist (for minimum_system_version), but
     # signing_identity must NOT carry a literal ${ENV:...} placeholder.
     macos = doc.get("macos", {})
-    assert "signing_identity" not in macos or "${ENV:" not in macos.get("signing_identity", "")
+    assert "signing_identity" not in macos or "${ENV:" not in macos.get(
+        "signing_identity", ""
+    )
 
 
 # --------------------------------------------------------------------------
 # [itasha] / [itasha.app] stripping
 # --------------------------------------------------------------------------
+
 
 def test_no_itasha_namespace_in_output(template_path, c0pl4nd_override):
     doc = merge_config.merge(template_path, c0pl4nd_override)
@@ -146,12 +153,16 @@ def test_no_package_metadata_wrapper_in_output(template_path, c0pl4nd_override):
 # Deep-merge precedence + overlays
 # --------------------------------------------------------------------------
 
+
 def test_deb_depends_overlay_applied(template_path, c0pl4nd_override):
     """The c0pl4nd override declares deb_depends; the merge overlay
     must populate [deb].depends with the list."""
     doc = merge_config.merge(template_path, c0pl4nd_override)
     assert doc.get("deb", {}).get("depends") == [
-        "libc6", "libxkbcommon0", "libwayland-client0", "libfontconfig1"
+        "libc6",
+        "libxkbcommon0",
+        "libwayland-client0",
+        "libfontconfig1",
     ]
 
 
@@ -179,6 +190,7 @@ def test_scribe_override_works_independently(template_path, scribe_override):
 # --------------------------------------------------------------------------
 # Schema validity (engine renames + alias map)
 # --------------------------------------------------------------------------
+
 
 def test_nsis_installer_mode_alias_applied(template_path, c0pl4nd_override):
     """cargo-packager 0.11.8 renamed install_mode -> installer_mode."""
@@ -219,6 +231,7 @@ def test_updater_dropped_when_pubkey_unresolved(template_path, c0pl4nd_override)
 # TOML emit + round-trip
 # --------------------------------------------------------------------------
 
+
 def test_emitted_toml_round_trips(template_path, c0pl4nd_override):
     doc = merge_config.merge(template_path, c0pl4nd_override)
     text = merge_config.emit_toml(doc)
@@ -250,6 +263,7 @@ def test_emitted_toml_starts_with_top_level_scalars(template_path, c0pl4nd_overr
 # CLI end-to-end
 # --------------------------------------------------------------------------
 
+
 def test_cli_writes_resolved_config(tmp_path):
     out_path = tmp_path / "c0pl4nd.packager.toml"
     rc = merge_config.main(
@@ -264,9 +278,7 @@ def test_cli_writes_resolved_config(tmp_path):
 
 
 def test_cli_stdout_mode(capsys):
-    rc = merge_config.main(
-        ["c0pl4nd", "--root", str(FRAMEWORK_ROOT), "--output", "-"]
-    )
+    rc = merge_config.main(["c0pl4nd", "--root", str(FRAMEWORK_ROOT), "--output", "-"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "product_name" in out
@@ -285,12 +297,16 @@ def test_cli_rejects_unknown_app():
 # cargo-packager schema acceptance (end-to-end, skipped if absent)
 # --------------------------------------------------------------------------
 
+
 def _have_cargo_packager() -> bool:
     """Probe for cargo-packager on PATH."""
     try:
         r = subprocess.run(
             ["cargo-packager", "--version"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
         )
         return r.returncode == 0
     except (OSError, subprocess.SubprocessError):
@@ -317,8 +333,12 @@ def test_cargo_packager_accepts_schema(tmp_path):
     payload = json.dumps(doc)
     r = subprocess.run(
         ["cargo-packager", "--config", payload],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=30,
+        check=False,
     )
     combined = (r.stdout or "") + (r.stderr or "")
     # The schema-acceptance gate: NO TOML parse / unknown-field /

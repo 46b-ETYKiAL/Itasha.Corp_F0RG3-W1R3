@@ -24,8 +24,8 @@ if ! command -v minisign >/dev/null 2>&1; then
   exit 127
 fi
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+ROOT="$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)"
 PUB="$ROOT/keys/minisign.pub"
 SECRET_OUT="${1:-$ROOT/minisign.key}"
 

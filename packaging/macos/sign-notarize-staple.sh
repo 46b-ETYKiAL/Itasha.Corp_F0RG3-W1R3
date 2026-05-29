@@ -44,11 +44,26 @@ VOLICON_PATH=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --app) APP_PATH="${2:-}"; shift 2 ;;
-    --dmg) DMG_PATH="${2:-}"; shift 2 ;;
-    --volicon) VOLICON_PATH="${2:-}"; shift 2 ;;
-    -h|--help) echo "Usage: $0 --app <App.app> --dmg <Disk.dmg> [--volicon <icon.icns>]"; exit 0 ;;
-    *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
+    --app)
+      APP_PATH="${2:-}"
+      shift 2
+      ;;
+    --dmg)
+      DMG_PATH="${2:-}"
+      shift 2
+      ;;
+    --volicon)
+      VOLICON_PATH="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
+      echo "Usage: $0 --app <App.app> --dmg <Disk.dmg> [--volicon <icon.icns>]"
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
@@ -123,7 +138,7 @@ if [ -n "$VOLICON_PATH" ]; then
     # Standard Apple recipe: encode the .icns into the Icon resource, then set
     # the volume's custom-icon bit. (The Icon resource lives in the file whose
     # name is "Icon" + CR; we reference it via $ICON_CR_NAME.)
-    DeRez -only icns "$VOLICON_PATH" > "${TMPDIR:-/tmp}/volicon.rsrc" 2>/dev/null || true
+    DeRez -only icns "$VOLICON_PATH" >"${TMPDIR:-/tmp}/volicon.rsrc" 2>/dev/null || true
     Rez -append "${TMPDIR:-/tmp}/volicon.rsrc" -o "$DMG_PATH/$ICON_CR_NAME" 2>/dev/null || true
     SetFile -a C "$DMG_PATH" 2>/dev/null || true
     SetFile -a V "$DMG_PATH/$ICON_CR_NAME" 2>/dev/null || true

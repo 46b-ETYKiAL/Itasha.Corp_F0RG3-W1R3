@@ -9,7 +9,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -73,7 +73,9 @@ jobs:
           found=0
           while IFS= read -r script; do
             found=1
-            shellcheck "$script"
+            # --severity=warning filters out info-level findings (e.g. SC1091
+            # "not following sourced file" for libs resolved only at runtime).
+            shellcheck --severity=warning "$script"
           done < <(find packaging scripts tests -name '*.sh' 2>/dev/null)
           if [ "$found" -eq 0 ]; then
             echo "No shell scripts found to lint."
@@ -87,7 +89,11 @@ jobs:
             "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
           chmod +x shfmt
           # -d = diff (non-zero exit on unformatted); -i 2 two-space indent.
-          ./shfmt -d -i 2 -ci $(find packaging scripts tests -name '*.sh' 2>/dev/null)
+          # Per-script loop with -print0 avoids word-splitting on paths with
+          # spaces (the unquoted $(find ...) form trips actionlint SC2046).
+          while IFS= read -r -d '' script; do
+            ./shfmt -d -i 2 -ci "$script"
+          done < <(find packaging scripts tests -name '*.sh' -print0 2>/dev/null)
 
       - name: Validate packager TOML + per-app overrides
         run: python tests/validate_config.py packager.template.toml apps/*.toml

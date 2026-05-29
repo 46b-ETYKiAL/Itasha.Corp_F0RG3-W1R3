@@ -41,10 +41,11 @@ def validate_template(path: Path, data: dict) -> list[str]:
     root = itasha.get("windows_install_root", "")
     if not root.endswith("Itasha.Corp"):
         errors.append(
-            "template [itasha].windows_install_root must end with 'Itasha.Corp' "
-            f"(got {root!r})"
+            f"template [itasha].windows_install_root must end with 'Itasha.Corp' (got {root!r})"
         )
-    nsis = data.get("package", {}).get("metadata", {}).get("packager", {}).get("nsis", {})
+    nsis = (
+        data.get("package", {}).get("metadata", {}).get("packager", {}).get("nsis", {})
+    )
     if nsis.get("install_mode") != "perMachine":
         errors.append("template NSIS install_mode must be 'perMachine' (D4)")
     return errors
@@ -72,7 +73,9 @@ def validate_override(path: Path, data: dict, template: dict | None) -> list[str
 
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
-        print("usage: validate_config.py <file.toml> [<file.toml> ...]", file=sys.stderr)
+        print(
+            "usage: validate_config.py <file.toml> [<file.toml> ...]", file=sys.stderr
+        )
         return 2
 
     paths = [Path(a) for a in argv[1:]]
@@ -98,7 +101,9 @@ def main(argv: list[str]) -> int:
         if _is_template(data):
             errs = validate_template(p, data)
             if not errs:
-                print(f"OK  {p.name:<28} (valid TOML, [itasha] template marker present)")
+                print(
+                    f"OK  {p.name:<28} (valid TOML, [itasha] template marker present)"
+                )
             all_errors.extend(errs)
         else:
             all_errors.extend(validate_override(p, data, template_data))

@@ -34,7 +34,8 @@ if [ -f checksum.sha256 ]; then
   if [ -n "$want" ] && [ "$have" = "$want" ]; then
     echo "  OK  sha256 matches checksum.sha256"
   else
-    echo "  FAIL sha256 mismatch (have $have, want ${want:-<none>})"; rc=1
+    echo "  FAIL sha256 mismatch (have $have, want ${want:-<none>})"
+    rc=1
   fi
 else
   echo "  --  checksum.sha256 not present; skipping hash check"
@@ -46,7 +47,8 @@ if command -v minisign >/dev/null 2>&1; then
     if minisign -Vm "$ART" -p "$PUB" >/dev/null 2>&1; then
       echo "  OK  minisign signature valid ($PUB)"
     else
-      echo "  FAIL minisign signature INVALID"; rc=1
+      echo "  FAIL minisign signature INVALID"
+      rc=1
     fi
   else
     echo "  --  no $ART.minisig or $PUB; signature check skipped (artifact may be an unsigned dev build)"

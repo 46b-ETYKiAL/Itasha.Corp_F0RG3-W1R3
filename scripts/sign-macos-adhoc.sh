@@ -29,13 +29,16 @@ if ! command -v codesign >/dev/null 2>&1; then
   echo "::warning::codesign not available (not macOS?) — ad-hoc signing skipped."
   exit 0
 fi
-[ -d "$DIST_DIR" ] || { echo "No $DIST_DIR/ — nothing to sign."; exit 0; }
+[ -d "$DIST_DIR" ] || {
+  echo "No $DIST_DIR/ — nothing to sign."
+  exit 0
+}
 
 count=0
 for app in "$DIST_DIR"/*.app; do
   [ -d "$app" ] || continue
-  codesign --force --deep --sign - --options runtime "$app" 2>/dev/null \
-    || codesign --force --deep --sign - "$app"
+  codesign --force --deep --sign - --options runtime "$app" 2>/dev/null ||
+    codesign --force --deep --sign - "$app"
   count=$((count + 1))
   echo "  ad-hoc signed: $(basename "$app")"
 done

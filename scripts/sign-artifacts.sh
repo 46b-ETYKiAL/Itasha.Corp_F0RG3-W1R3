@@ -51,7 +51,7 @@ else
   SECRET_FILE="$(mktemp)"
   CLEANUP=1
   chmod 600 "$SECRET_FILE"
-  printf '%s\n' "$MINISIGN_SECRET_KEY" > "$SECRET_FILE"
+  printf '%s\n' "$MINISIGN_SECRET_KEY" >"$SECRET_FILE"
 fi
 # shellcheck disable=SC2064
 trap '[ "$CLEANUP" -eq 1 ] && rm -f "$SECRET_FILE"' EXIT INT TERM
@@ -61,14 +61,16 @@ SIGNED=0
 for f in "$DIST_DIR"/*; do
   [ -f "$f" ] || continue
   case "$f" in
-    *.minisig|*checksum.sha256) continue ;;
+    *.minisig | *checksum.sha256) continue ;;
   esac
   # minisign reads the key password from stdin when stdin is not a TTY; a
   # trailing newline submits an empty password for a passwordless CI key
   # (recommended). NEVER fakes — a failure aborts the release loudly.
   printf '%s\n' "${MINISIGN_PASSWORD:-}" | minisign -S -s "$SECRET_FILE" \
     -c "minisign signature" -t "$TRUSTED_COMMENT" -m "$f" >/dev/null 2>&1 || {
-      echo "::error::minisign failed to sign $f (check MINISIGN_SECRET_KEY / MINISIGN_PASSWORD; CI keys should be passwordless)"; exit 1; }
+    echo "::error::minisign failed to sign $f (check MINISIGN_SECRET_KEY / MINISIGN_PASSWORD; CI keys should be passwordless)"
+    exit 1
+  }
   echo "  signed: $(basename "$f").minisig"
   SIGNED=$((SIGNED + 1))
 done
