@@ -28,20 +28,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (egress audit)
-        # step-security/harden-runner@v2.19.4
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
       - name: Checkout
-        # actions/checkout@v4.2.2
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
       - name: Set up Python
-        # actions/setup-python@v5.6.0
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
 
@@ -106,14 +103,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Harden the runner (egress audit)
-        # step-security/harden-runner@v2.19.4
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
       - name: Checkout
-        # actions/checkout@v4.2.2
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -139,14 +134,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (egress audit)
-        # step-security/harden-runner@v2.19.4
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
       - name: Checkout
-        # actions/checkout@v4.2.2
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
