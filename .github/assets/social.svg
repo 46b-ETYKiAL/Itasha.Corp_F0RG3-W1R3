@@ -13,6 +13,8 @@
     <filter id="soft"><feGaussianBlur stdDeviation="2.4"/></filter>
     <filter id="glow"><feGaussianBlur stdDeviation="2.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <clipPath id="sc"><rect x="28" y="22" width="1224" height="592" rx="6"/></clipPath>
+    <radialGradient id="glass" cx="36%" cy="22%" r="62%"><stop offset="0%" stop-color="#ffffff" stop-opacity="0.06"/><stop offset="55%" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <pattern id="phosmask" width="3" height="1" patternUnits="userSpaceOnUse"><rect width="1" height="1" x="0" fill="#ff2a2a"/><rect width="1" height="1" x="1" fill="#2aff2a"/><rect width="1" height="1" x="2" fill="#2a2aff"/></pattern>
   </defs>
   <style>
     text { font-family: 'SF Mono','Fira Code','Cascadia Code','JetBrains Mono',Consolas,monospace; }
@@ -34,6 +36,8 @@
     @keyframes okPulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
     @keyframes linePulse { 0%,100% { opacity: 0.8; } 50% { opacity: 1; } }
     @keyframes titleBreathe { 0%,100% { opacity: 1; } 50% { opacity: 0.85; } }
+    @keyframes crtBlank { 0%,90% { opacity: 0; } 91.5% { opacity: 1; } 97% { opacity: 1; } 98.6% { opacity: 0; } 100% { opacity: 0; } }
+    @keyframes crtLine { 0%,89.5% { opacity: 0; transform: scaleY(1); } 90.4% { opacity: 0.95; transform: scaleY(0.03); } 91.4% { opacity: 0; transform: scaleY(0.01); } 97.4% { opacity: 0; transform: scaleY(0.02); } 98.2% { opacity: 0.95; transform: scaleY(0.08); } 99.2% { opacity: 0; transform: scaleY(1); } 100% { opacity: 0; } }
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
   </style>
 
@@ -66,6 +70,8 @@
   </g>
   <rect x="28" y="22" width="1224" height="592" rx="6" fill="url(#scan)"/>
   <rect x="28" y="22" width="1224" height="592" rx="6" fill="url(#vig)"/>
+  <rect x="28" y="22" width="1224" height="592" rx="6" fill="url(#phosmask)" opacity="0.04"/>
+  <rect x="28" y="22" width="1224" height="592" rx="6" fill="url(#glass)"/>
   <rect x="28" y="22" width="1224" height="592" rx="6" fill="none" stroke="#34e0d0" stroke-width="1" opacity="0.07" stroke-dasharray="22,3428" style="animation: edgeGlow 11s linear infinite;"/>
   <rect x="28" y="22" width="1224" height="592" rx="6" fill="none" stroke="#1a242b"/>
 
@@ -172,4 +178,6 @@
     <circle cx="1224" cy="627" r="4" fill="#6fb89a" opacity="0.5"/>
     <circle cx="1224" cy="627" r="2" fill="#6fb89a" opacity="0.95" style="animation: heartbeat 2.4s ease-in-out infinite; transform-origin: 1224px 627px;"/>
   </g>
+  <rect x="28" y="22" width="1224" height="592" rx="6" fill="#050608" opacity="0" style="animation: crtBlank 14s ease-in-out infinite;"/>
+  <rect x="28" y="316.5" width="1224" height="3" fill="#e9f7ff" opacity="0" style="animation: crtLine 14s ease-in-out infinite; transform-origin: 640px 318.0px;"/>
 </svg>
