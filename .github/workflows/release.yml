@@ -282,7 +282,7 @@ jobs:
       # Install cosign for keyless sign-blob. Pinned installer action.
       - name: Install cosign
         if: steps.binary.outputs.dry_run == '0'
-        uses: sigstore/cosign-installer@4959ce089c160fddf62f7b42464195ba1a56d382 # v3.6.0
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: "v2.4.1"
 
