@@ -14,6 +14,10 @@
 #   77  scenario SKIPPED (a required tool/host is unavailable) — documented,
 #       borrowed from the GNU automake convention for "skipped test".
 # ----------------------------------------------------------------------------
+# MATRIX_SKIP is consumed by sourcing scripts (tests/{linux,macos}/verify.sh
+# and the matrix runner) via `exit "$MATRIX_SKIP"`. shellcheck cannot see
+# cross-file usage of variables in sourced libraries.
+# shellcheck disable=SC2034
 MATRIX_SKIP=77
 
 log()  { printf '%s\n' "$*"; }
