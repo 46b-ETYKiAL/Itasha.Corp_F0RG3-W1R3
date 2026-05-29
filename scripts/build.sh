@@ -40,8 +40,8 @@ if [ -z "$APP" ]; then
   exit 2
 fi
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+ROOT="$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE="$ROOT/packager.template.toml"
 OVERRIDE="$ROOT/apps/$APP.toml"
 

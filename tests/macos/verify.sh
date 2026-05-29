@@ -23,7 +23,7 @@
 # ----------------------------------------------------------------------------
 set -eu
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 # shellcheck source=../matrix/_lib.sh
 . "$SCRIPT_DIR/../matrix/_lib.sh"
 
