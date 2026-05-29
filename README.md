@@ -20,7 +20,7 @@
 
 It packages an already-built executable into a first-class branded install experience: a Windows options screen with sensible defaults, a drag-to-Applications `.dmg`, a portable Linux AppImage, clean uninstall, and a documented signing posture — without forking a generator per app and without ever putting source code or signing keys in this repository.
 
-> The name is a nod to the *wired* of the Itasha.Corp surface: F0RG3-W1R3 **forges** an installer from a binary and **wires** it onto every platform. Its first consumer is the **C0PL4ND** terminal.
+> The name is a nod to the *wired* of the Itasha.Corp surface: F0RG3-W1R3 **forges** an installer from a binary and **wires** it onto every platform. Its first consumer is the **C0PL4ND** terminal, with **SCR1B3** (note-taking) as the second consumer that proves the per-app override is a small file, not a fork.
 
 ---
 
@@ -57,6 +57,7 @@ itasha-installer/
 ├── .github/assets/                # README banner + footer SVGs
 ├── packager.template.toml         # SHARED company defaults (engine config)
 ├── apps/c0pl4nd.toml              # per-app override (first consumer)
+├── apps/scribe.toml               # per-app override (SCR1B3 — reusability proof)
 ├── packaging/
 │   ├── windows/options.nsh        # NSIS hook: options screen + ARP + PATH
 │   ├── windows/wix/               # RESERVED enterprise MSI track (WiX v6)
