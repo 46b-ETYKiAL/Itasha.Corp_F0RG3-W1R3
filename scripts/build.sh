@@ -23,15 +23,26 @@ DRY_RUN=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --app)     APP="${2:-}"; shift 2 ;;
-    --binary)  BINARY="${2:-}"; shift 2 ;;
-    --dry-run) DRY_RUN=1; shift ;;
-    -h|--help)
+    --app)
+      APP="${2:-}"
+      shift 2
+      ;;
+    --binary)
+      BINARY="${2:-}"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    -h | --help)
       echo "Usage: $0 --app <name> [--binary <path>] [--dry-run]"
-      exit 0 ;;
+      exit 0
+      ;;
     *)
       echo "ERROR: unknown argument: $1" >&2
-      exit 2 ;;
+      exit 2
+      ;;
   esac
 done
 

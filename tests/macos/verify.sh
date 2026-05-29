@@ -31,10 +31,22 @@ APP_PATH=""
 DMG_PATH=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --app) APP_PATH="${2:-}"; shift 2 ;;
-    --dmg) DMG_PATH="${2:-}"; shift 2 ;;
-    -h|--help) echo "Usage: $0 --app <App.app> --dmg <Disk.dmg>"; exit 0 ;;
-    *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
+    --app)
+      APP_PATH="${2:-}"
+      shift 2
+      ;;
+    --dmg)
+      DMG_PATH="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
+      echo "Usage: $0 --app <App.app> --dmg <Disk.dmg>"
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
