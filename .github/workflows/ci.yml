@@ -90,7 +90,16 @@ jobs:
             "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
           chmod +x shfmt
           # -d = diff (non-zero exit on unformatted); -i 2 two-space indent.
-          ./shfmt -d -i 2 -ci $(find packaging scripts tests -name '*.sh' 2>/dev/null)
+          # Use find -print0 + xargs -0 to avoid SC2046 word-splitting on
+          # filenames with spaces (caught by actionlint/shellcheck).
+          found=0
+          while IFS= read -r -d '' script; do
+            found=1
+            ./shfmt -d -i 2 -ci "$script"
+          done < <(find packaging scripts tests -name '*.sh' -print0 2>/dev/null)
+          if [ "$found" -eq 0 ]; then
+            echo "No shell scripts found to shfmt."
+          fi
 
       - name: Validate packager TOML + per-app overrides
         run: python tests/validate_config.py packager.template.toml apps/*.toml
