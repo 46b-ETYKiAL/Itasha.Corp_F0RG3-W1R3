@@ -70,19 +70,17 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
     steps:
-      # actions/checkout@v4.2.2
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # actions/setup-python@v5.3.0
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
 
       # dtolnay/rust-toolchain@stable (pinned commit)
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb2c1ce8ea046b1c8c75b2
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb2c1ce8ea046b1c8c75b2 # stable
         with:
           toolchain: stable
 
@@ -240,11 +238,10 @@ jobs:
       # CycloneDX SBOM over the bundled artifact dir via syft (anchore).
       # Emits dist/sbom.cdx.json describing every component in the release
       # bundle so downstream consumers can audit the dependency surface.
-      # anchore/sbom-action@v0.17.8
       - name: Generate CycloneDX SBOM (syft)
         id: sbom
         if: steps.binary.outputs.dry_run == '0'
-        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
         with:
           path: dist/
           format: cyclonedx-json
@@ -270,10 +267,9 @@ jobs:
           fi
 
       # Install cosign for keyless sign-blob. Pinned installer action.
-      # sigstore/cosign-installer@v3.7.0
       - name: Install cosign
         if: steps.binary.outputs.dry_run == '0'
-        uses: sigstore/cosign-installer@4959ce089c160fddf62f7b42464195ba1a56d382
+        uses: sigstore/cosign-installer@4959ce089c160fddf62f7b42464195ba1a56d382 # v3.6.0
         with:
           cosign-release: "v2.4.1"
 
@@ -320,10 +316,9 @@ jobs:
       # SLSA-L2 keyless build provenance, one attestation per release artifact.
       # GATED on a real (non-empty) dist/ so an empty bundle cannot mint an
       # attestation over nothing. Verifiable later with `gh attestation verify`.
-      # actions/attest-build-provenance@v2.4.0
       - name: Attest build provenance (SLSA L2, keyless)
         if: steps.binary.outputs.dry_run == '0' && hashFiles('dist/**') != ''
-        uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb
+        uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb # v2.1.0
         with:
           subject-path: "dist/*"
 
@@ -332,10 +327,9 @@ jobs:
         shell: bash
         run: echo "::warning::Build-provenance attestation SKIPPED — dist/ is empty on this runner. No attestation was minted over a non-existent artifact."
 
-      # actions/upload-artifact@v4.4.3
       - name: Upload build artifacts
         if: steps.binary.outputs.dry_run == '0'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: installer-${{ matrix.os }}
           path: dist/
@@ -354,9 +348,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      # actions/download-artifact@v4.1.8
       - name: Download all build artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
 
@@ -410,24 +403,22 @@ jobs:
         if: hashFiles('release/*.minisig') == ''
         run: echo "::warning::updater feed (latest.json) SKIPPED — no .minisig signatures present (MINISIGN_SECRET_KEY absent in build). Gated-not-faked."
 
-      # softprops/action-gh-release@v2.0.8
       - name: Attach artifacts to GitHub Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           files: release/*
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # actions/checkout@v4.2.2 — needed for the manifest-update tool.
+      # actions/checkout@v6.0.2 — needed for the manifest-update tool.
       - name: Checkout (manifest tooling)
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: framework
 
-      # actions/setup-python@v5.3.0
       - name: Set up Python (manifest tooling)
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
 
@@ -450,10 +441,9 @@ jobs:
             --out-dir resolved-manifests \
             --repo "${GITHUB_REPOSITORY}"
 
-      # actions/upload-artifact@v4.4.3
       - name: Upload resolved manifests
         if: hashFiles('release/*') != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: resolved-manifests
           path: resolved-manifests/
