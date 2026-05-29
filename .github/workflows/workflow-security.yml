@@ -9,7 +9,7 @@ name: Workflow Security
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -47,10 +47,15 @@ jobs:
         run: pip install "zizmor==1.25.2"
 
       - name: Run zizmor (SARIF)
-        # GITHUB_TOKEN lets zizmor query the audited repo's metadata.
+        # zizmor v1.x always writes results to stdout — there is no
+        # --output flag; SARIF must be captured via shell redirection.
+        # With --format sarif zizmor exits 0 even when findings exist
+        # (SARIF consumers read results from the document, not the exit
+        # code), so the report is uploaded to the Security tab below.
+        # https://docs.zizmor.sh/usage/  (Output handling + SARIF section)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: zizmor --format sarif --output zizmor.sarif . || true
+        run: zizmor --format sarif . >zizmor.sarif
 
       - name: Upload zizmor SARIF
         uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0

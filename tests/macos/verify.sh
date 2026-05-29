@@ -30,7 +30,7 @@
 # ----------------------------------------------------------------------------
 set -eu
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 # shellcheck source=../matrix/_lib.sh
 . "$SCRIPT_DIR/../matrix/_lib.sh"
 
@@ -43,11 +43,26 @@ DMG_PATH=""
 EXPECT_VOLICON=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --app) APP_PATH="${2:-}"; shift 2 ;;
-    --dmg) DMG_PATH="${2:-}"; shift 2 ;;
-    --expect-volicon) EXPECT_VOLICON=1; shift ;;
-    -h|--help) echo "Usage: $0 --app <App.app> --dmg <Disk.dmg> [--expect-volicon]"; exit 0 ;;
-    *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
+    --app)
+      APP_PATH="${2:-}"
+      shift 2
+      ;;
+    --dmg)
+      DMG_PATH="${2:-}"
+      shift 2
+      ;;
+    --expect-volicon)
+      EXPECT_VOLICON=1
+      shift
+      ;;
+    -h | --help)
+      echo "Usage: $0 --app <App.app> --dmg <Disk.dmg> [--expect-volicon]"
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 

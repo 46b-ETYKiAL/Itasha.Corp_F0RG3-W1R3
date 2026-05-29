@@ -14,22 +14,25 @@
 #   77  scenario SKIPPED (a required tool/host is unavailable) — documented,
 #       borrowed from the GNU automake convention for "skipped test".
 # ----------------------------------------------------------------------------
+# shellcheck disable=SC2034  # consumed by the matrix runners that source this lib
 MATRIX_SKIP=77
 
-log()  { printf '%s\n' "$*"; }
+log() { printf '%s\n' "$*"; }
 pass() { printf 'PASS: %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; }
 
 # skip <scenario> <reason> — print a structured skip line and signal the code.
 skip() {
-  _scn="$1"; shift
+  _scn="$1"
+  shift
   printf 'SKIP: %s :: %s\n' "$_scn" "$*" >&2
   printf 'matrix-skip-reason: tool-or-host-unavailable\n' >&2
 }
 
 # require_tool <name> <install-hint> — 0 if present, 1 (with loud skip) if not.
 require_tool() {
-  _name="$1"; _hint="$2"
+  _name="$1"
+  _hint="$2"
   if command -v "$_name" >/dev/null 2>&1; then
     return 0
   fi
@@ -44,12 +47,13 @@ require_os() {
   _want="$1"
   _have="$(uname -s 2>/dev/null || echo unknown)"
   case "$_want:$_have" in
-    windows:*MINGW*|windows:*MSYS*|windows:*CYGWIN*) return 0 ;;
+    windows:*MINGW* | windows:*MSYS* | windows:*CYGWIN*) return 0 ;;
     macos:Darwin) return 0 ;;
     linux:Linux) return 0 ;;
     *)
       printf 'SKIP: scenario requires OS=%s but running on %s\n' "$_want" "$_have" >&2
       printf 'matrix-skip-reason: wrong-host-os\n' >&2
-      return 1 ;;
+      return 1
+      ;;
   esac
 }

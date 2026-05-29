@@ -24,9 +24,18 @@ set -eu
 APP=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --app) APP="${2:-}"; shift 2 ;;
-    -h|--help) echo "Usage: $0 --app <name>"; exit 0 ;;
-    *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
+    --app)
+      APP="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
+      echo "Usage: $0 --app <name>"
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 if [ -z "$APP" ]; then
@@ -34,7 +43,7 @@ if [ -z "$APP" ]; then
   exit 2
 fi
 
-BRANDING="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+BRANDING="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 ICON_SVG="$BRANDING/$APP/icon.svg"
 DMG_SVG="$BRANDING/dmg-background.svg"
 
@@ -87,7 +96,8 @@ fi
 # --- macOS .icns ---
 if command -v iconutil >/dev/null 2>&1; then
   echo "==> Generating macOS .icns (iconutil)"
-  ICONSET="$(mktemp -d)/icon.iconset"; mkdir -p "$ICONSET"
+  ICONSET="$(mktemp -d)/icon.iconset"
+  mkdir -p "$ICONSET"
   for sz in 16 32 64 128 256 512; do
     svg_to_png "$ICON_SVG" "$ICONSET/icon_${sz}x${sz}.png" "$sz" "$sz"
     dbl=$((sz * 2))

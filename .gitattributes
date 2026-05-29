@@ -1,0 +1,25 @@
+# Deterministic line endings so CI lint/format checks (shfmt, shellcheck,
+# ruff) see the same bytes regardless of contributor OS. Without this, a
+# Windows checkout with core.autocrlf=true rewrites LF -> CRLF on commit,
+# which silently diverges the committed blob from what the Linux CI runner
+# formatted/validated.
+* text=auto
+
+# Shell + Python + workflow sources are LF-only.
+*.sh    text eol=lf
+*.bash  text eol=lf
+*.py    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+# PowerShell is conventionally CRLF on Windows; keep it CRLF.
+*.ps1   text eol=crlf
+*.psm1  text eol=crlf
+*.psd1  text eol=crlf
+
+# Binary assets — never normalize.
+*.png   binary
+*.ico   binary
+*.icns  binary
+*.bmp   binary
+*.svg   text eol=lf

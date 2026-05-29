@@ -43,7 +43,6 @@ from typing import Any
 
 import tomllib
 
-
 # ---------------------------------------------------------------------------
 # Placeholder resolution
 # ---------------------------------------------------------------------------
@@ -111,6 +110,7 @@ def _resolve_placeholders(
     pruned by `_prune_unresolved`).
     """
     if isinstance(value, str):
+
         def _sub(match: re.Match[str]) -> str:
             token = match.group(1)
             if token == "APP_BINARY_PATH":
@@ -143,20 +143,27 @@ def _resolve_placeholders(
                 unresolved.append(token)
                 return match.group(0)
             return resolved
+
         return _PLACEHOLDER_RE.sub(_sub, value)
     if isinstance(value, dict):
         return {
             k: _resolve_placeholders(
-                v, app, binary_path=binary_path,
-                unresolved=unresolved, unresolved_env=unresolved_env,
+                v,
+                app,
+                binary_path=binary_path,
+                unresolved=unresolved,
+                unresolved_env=unresolved_env,
             )
             for k, v in value.items()
         }
     if isinstance(value, list):
         return [
             _resolve_placeholders(
-                v, app, binary_path=binary_path,
-                unresolved=unresolved, unresolved_env=unresolved_env,
+                v,
+                app,
+                binary_path=binary_path,
+                unresolved=unresolved,
+                unresolved_env=unresolved_env,
             )
             for v in value
         ]
@@ -220,6 +227,7 @@ def _prune_unresolved(value: Any) -> Any:
 # Deep merge
 # ---------------------------------------------------------------------------
 
+
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Deep-merge `override` into `base`.
 
@@ -258,6 +266,7 @@ def _override_to_packager_overlay(app: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # TOML emit (hand-rolled, stdlib-only)
 # ---------------------------------------------------------------------------
+
 
 def _toml_escape_str(s: str) -> str:
     # cargo-packager keys/values are simple strings; escape backslash + quote.
@@ -308,11 +317,7 @@ def _emit_table(name: str, table: dict[str, Any], buf: list[str]) -> None:
                 scalars.append((k, v))
             else:
                 subtables.append((k, v))
-        elif (
-            isinstance(v, list)
-            and v
-            and all(isinstance(x, dict) for x in v)
-        ):
+        elif isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
             array_subtables.append((k, v))
         else:
             scalars.append((k, v))
@@ -351,11 +356,7 @@ def emit_toml(doc: dict[str, Any]) -> str:
     for k, v in doc.items():
         if isinstance(v, dict):
             tables.append((k, v))
-        elif (
-            isinstance(v, list)
-            and v
-            and all(isinstance(x, dict) for x in v)
-        ):
+        elif isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
             array_tables.append((k, v))
         else:
             scalars.append((k, v))
@@ -433,11 +434,7 @@ def merge(
 
     # The template's cargo-packager block lives at
     # [package.metadata.packager.*] (embedded-in-Cargo.toml form).
-    pkg = (
-        template.get("package", {})
-        .get("metadata", {})
-        .get("packager", {})
-    )
+    pkg = template.get("package", {}).get("metadata", {}).get("packager", {})
     if not pkg:
         raise SystemExit(
             "merge_config.py: template missing [package.metadata.packager.*]"
@@ -451,7 +448,8 @@ def merge(
     unresolved: list[str] = []
     unresolved_env: list[str] = []
     resolved = _resolve_placeholders(
-        merged, app,
+        merged,
+        app,
         binary_path=binary_path,
         unresolved=unresolved,
         unresolved_env=unresolved_env,
@@ -460,8 +458,7 @@ def merge(
         # A required ${APP_*} placeholder has no mapping or value.
         missing = sorted(set(unresolved))
         raise SystemExit(
-            "merge_config.py: unresolved ${APP_*} placeholders: "
-            + ", ".join(missing)
+            "merge_config.py: unresolved ${APP_*} placeholders: " + ", ".join(missing)
         )
 
     # If the override did not set version, fill the documented default
@@ -482,7 +479,9 @@ def merge(
     # updater config would silently misroute updates.
     updater = pruned.get("updater") if isinstance(pruned, dict) else None
     if isinstance(updater, dict):
-        if not updater.get("pubkey") or not updater.get("endpoint") and not updater.get("endpoints"):
+        if not updater.get("pubkey") or (
+            not updater.get("endpoint") and not updater.get("endpoints")
+        ):
             # endpoint/endpoints are the same concept in different schema
             # versions; either being absent is a gate.
             pruned.pop("updater", None)
@@ -515,7 +514,7 @@ def merge(
     if isinstance(nsis, dict) and "installer_hooks" in nsis:
         hooks_relpath = nsis.pop("installer_hooks")
         # Read the hook file relative to the framework root.
-        hooks_path = (template_path.parent / hooks_relpath)
+        hooks_path = template_path.parent / hooks_relpath
         if hooks_path.is_file():
             try:
                 hooks_content = hooks_path.read_text(encoding="utf-8")
@@ -524,8 +523,7 @@ def merge(
                 # File existed at is_file() check but read failed —
                 # surface and continue without the hook content.
                 print(
-                    f"merge_config.py: failed to read {hooks_path}: {exc}; "
-                    "NSIS hook content NOT inlined.",
+                    f"merge_config.py: failed to read {hooks_path}: {exc}; NSIS hook content NOT inlined.",
                     file=sys.stderr,
                 )
                 hooks_content = None
@@ -542,8 +540,7 @@ def merge(
                 )
         else:
             print(
-                f"merge_config.py: NSIS hook file not found: {hooks_path}; "
-                "dropped nsis.installer_hooks.",
+                f"merge_config.py: NSIS hook file not found: {hooks_path}; dropped nsis.installer_hooks.",
                 file=sys.stderr,
             )
 
@@ -586,12 +583,12 @@ def _strip_unsupported_keys(doc: dict[str, Any]) -> dict[str, Any]:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="merge_config.py",
         description=(
-            "Merge packager.template.toml with apps/<APP>.toml into a "
-            "cargo-packager-acceptable config (closes gap A)."
+            "Merge packager.template.toml with apps/<APP>.toml into a cargo-packager-acceptable config (closes gap A)."
         ),
     )
     parser.add_argument(
@@ -608,8 +605,7 @@ def main(argv: list[str]) -> int:
         "--binary-path",
         default=None,
         help=(
-            "Resolved binary path to substitute for ${APP_BINARY_PATH}. "
-            "Falls back to env ITASHA_BINARY_PATH if unset."
+            "Resolved binary path to substitute for ${APP_BINARY_PATH}. Falls back to env ITASHA_BINARY_PATH if unset."
         ),
     )
     parser.add_argument(

@@ -17,12 +17,22 @@ NAME="c0pl4nd"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --appimage) APPIMAGE="${2:-}"; shift 2 ;;
-    --name)     NAME="${2:-}"; shift 2 ;;
-    -h|--help)
+    --appimage)
+      APPIMAGE="${2:-}"
+      shift 2
+      ;;
+    --name)
+      NAME="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
       echo "Usage: $0 --appimage <path.AppImage> [--name <binname>]"
-      exit 0 ;;
-    *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
@@ -39,7 +49,7 @@ fi
 if [ -f "$APPIMAGE.sha256" ]; then
   echo "==> Verifying checksum"
   if command -v sha256sum >/dev/null 2>&1; then
-    ( cd "$(dirname "$APPIMAGE")" && sha256sum -c "$(basename "$APPIMAGE").sha256" )
+    (cd "$(dirname "$APPIMAGE")" && sha256sum -c "$(basename "$APPIMAGE").sha256")
   else
     echo "WARNING: sha256sum not available; skipping checksum verification." >&2
   fi
@@ -56,15 +66,15 @@ cp "$APPIMAGE" "$BIN_DIR/$NAME"
 chmod +x "$BIN_DIR/$NAME"
 
 # --- Install the .desktop entry (menu integration). ---
-DESKTOP_SRC="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/$NAME.desktop"
+DESKTOP_SRC="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/$NAME.desktop"
 if [ -f "$DESKTOP_SRC" ]; then
   echo "==> Installing desktop entry to $APPS_DIR/$NAME.desktop"
   # Point Exec at the installed binary path.
-  sed "s|^Exec=.*|Exec=$BIN_DIR/$NAME|" "$DESKTOP_SRC" > "$APPS_DIR/$NAME.desktop"
+  sed "s|^Exec=.*|Exec=$BIN_DIR/$NAME|" "$DESKTOP_SRC" >"$APPS_DIR/$NAME.desktop"
 fi
 
 # --- Install the icon (256px, hicolor theme). ---
-ICON_SRC="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/../../branding/$NAME/icon-256.png"
+ICON_SRC="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/../../branding/$NAME/icon-256.png"
 if [ -f "$ICON_SRC" ]; then
   echo "==> Installing icon to $ICON_DIR/$NAME.png"
   cp "$ICON_SRC" "$ICON_DIR/$NAME.png"

@@ -34,12 +34,22 @@ TOOLCHAIN="stable"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --app)        APP="${2:?--app needs a value}"; shift 2 ;;
-    --toolchain)  TOOLCHAIN="${2:?--toolchain needs a value}"; shift 2 ;;
-    -h|--help)
+    --app)
+      APP="${2:?--app needs a value}"
+      shift 2
+      ;;
+    --toolchain)
+      TOOLCHAIN="${2:?--toolchain needs a value}"
+      shift 2
+      ;;
+    -h | --help)
       grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'
-      exit 0 ;;
-    *) echo "unknown arg: $1" >&2; exit 2 ;;
+      exit 0
+      ;;
+    *)
+      echo "unknown arg: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
@@ -79,20 +89,20 @@ trap 'rm -rf "$WORK"' EXIT
 # legitimately differ) so we measure the UNSIGNED payload only.
 tree_hash() {
   payload_dir="$1"
-  ( cd "$payload_dir" && \
+  (cd "$payload_dir" &&
     find . -type f \
       ! -name '*.sig' ! -name '*.pem' ! -name '*.minisig' \
-      ! -name 'checksum.sha256' ! -name 'sbom.cdx.json*' \
-      | LC_ALL=C sort \
-      | while IFS= read -r rel; do
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$rel"
-          else
-            shasum -a 256 "$rel"
-          fi
-        done ) | { \
-      if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi; \
-    } | awk '{print $1}'
+      ! -name 'checksum.sha256' ! -name 'sbom.cdx.json*' |
+    LC_ALL=C sort |
+      while IFS= read -r rel; do
+        if command -v sha256sum >/dev/null 2>&1; then
+          sha256sum "$rel"
+        else
+          shasum -a 256 "$rel"
+        fi
+      done) | {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi
+  } | awk '{print $1}'
 }
 
 build_once() {
@@ -102,8 +112,11 @@ build_once() {
   # archive timestamps; the --toolchain pin keeps the compiler deterministic.
   # The build wrapper resolves the per-app config (apps/<app>.toml).
   if [ -x ./scripts/build.sh ]; then
-    SDE_OUT="$out" ./scripts/build.sh --app "$APP" --reproducible-out "$out" \
-      || { echo "build.sh failed for run -> $out" >&2; return 1; }
+    SDE_OUT="$out" ./scripts/build.sh --app "$APP" --reproducible-out "$out" ||
+      {
+        echo "build.sh failed for run -> $out" >&2
+        return 1
+      }
   else
     echo "ERROR: scripts/build.sh not found — cannot produce the payload." >&2
     return 2
