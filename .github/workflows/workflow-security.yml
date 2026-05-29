@@ -51,9 +51,11 @@ jobs:
 
       - name: Run zizmor (SARIF)
         # GITHUB_TOKEN lets zizmor query the audited repo's metadata.
+        # zizmor 1.x removed the `--output` flag — redirect stdout instead.
+        # https://docs.zizmor.sh/usage/
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: zizmor --format sarif --output zizmor.sarif . || true
+        run: zizmor --format sarif . > zizmor.sarif || true
 
       - name: Upload zizmor SARIF
         # github/codeql-action/upload-sarif@v3.30.3

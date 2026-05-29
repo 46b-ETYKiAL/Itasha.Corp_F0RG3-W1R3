@@ -30,14 +30,34 @@ ROOT = Path(__file__).resolve().parent.parent
 # and transient agent-session runtime state that is never part of the
 # publishable surface — these are git-ignored and must not influence the verdict).
 SKIP_DIRS = {
-    ".git", "target", "dist", "out", "build", "binaries", "inputs", "node_modules",
-    "__pycache__", ".s4f3-data", ".claude-data",
+    ".git",
+    "target",
+    "dist",
+    "out",
+    "build",
+    "binaries",
+    "inputs",
+    "node_modules",
+    "__pycache__",
+    ".s4f3-data",
+    ".claude-data",
 }
 
 # Secret-bearing file extensions that must never appear in the tree.
 SECRET_SUFFIXES = {
-    ".p12", ".pfx", ".p8", ".pem", ".key", ".cer", ".crt",
-    ".keystore", ".jks", ".pvk", ".spc", ".provisionprofile", ".mobileprovision",
+    ".p12",
+    ".pfx",
+    ".p8",
+    ".pem",
+    ".key",
+    ".cer",
+    ".crt",
+    ".keystore",
+    ".jks",
+    ".pvk",
+    ".spc",
+    ".provisionprofile",
+    ".mobileprovision",
 }
 
 # Internal-system tokens. Built without writing them as literals so this very
@@ -52,7 +72,10 @@ CONTENT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("internal Windows user path", re.compile(r"C:\\\\?Users\\\\?[^\\\\/\s\"']+")),
     ("internal POSIX home path", re.compile(r"/home/[A-Za-z0-9._-]+")),
     ("internal macOS user path", re.compile(r"/Users/[A-Za-z0-9._-]+")),
-    ("plan-identifier token", re.compile(r"(?<![A-Za-z])plan[-_ ]?\d{2,4}(?![A-Za-z\d])", re.I)),
+    (
+        "plan-identifier token",
+        re.compile(r"(?<![A-Za-z])plan[-_ ]?\d{2,4}(?![A-Za-z\d])", re.I),
+    ),
     ("internal config dir (a)", re.compile(re.escape(_INTERNAL_CONFIG_A) + r"\b")),
     ("internal config dir (b)", re.compile(re.escape(_INTERNAL_CONFIG_B) + r"\b")),
     ("internal system brand", re.compile(r"\b" + re.escape(_INTERNAL_BRAND) + r"\b")),
@@ -60,9 +83,26 @@ CONTENT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 
 # Text file extensions worth scanning for content patterns.
 TEXT_SUFFIXES = {
-    ".toml", ".yml", ".yaml", ".md", ".sh", ".ps1", ".nsh", ".nsi",
-    ".py", ".txt", ".json", ".cfg", ".ini", ".desktop", ".rb", ".wxs",
-    ".svg", ".rtf", ".plist", ".control",
+    ".toml",
+    ".yml",
+    ".yaml",
+    ".md",
+    ".sh",
+    ".ps1",
+    ".nsh",
+    ".nsi",
+    ".py",
+    ".txt",
+    ".json",
+    ".cfg",
+    ".ini",
+    ".desktop",
+    ".rb",
+    ".wxs",
+    ".svg",
+    ".rtf",
+    ".plist",
+    ".control",
 }
 
 
@@ -92,7 +132,9 @@ def main() -> int:
     if apps_dir.is_dir():
         for child in apps_dir.iterdir():
             if child.is_dir() and (child / "src").exists():
-                findings.append(f"vendored app source tree: {child.relative_to(ROOT)}/src")
+                findings.append(
+                    f"vendored app source tree: {child.relative_to(ROOT)}/src"
+                )
 
     # 3. Content patterns in text files (skip this auditor itself).
     for p in files:
@@ -110,7 +152,10 @@ def main() -> int:
                 findings.append(f"{label}: {p.relative_to(ROOT)}")
 
     if findings:
-        print("CONTENT-SAFETY AUDIT FAILED — IP-boundary leakage detected:", file=sys.stderr)
+        print(
+            "CONTENT-SAFETY AUDIT FAILED — IP-boundary leakage detected:",
+            file=sys.stderr,
+        )
         for f in sorted(set(findings)):
             print(f"  - {f}", file=sys.stderr)
         return 1

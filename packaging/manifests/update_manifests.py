@@ -58,7 +58,9 @@ def _write_resolved(template: Path, out: Path, replacements: dict[str, str]) -> 
         text = text.replace(needle, value)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")
-    print(f"resolved {out.relative_to(out.parents[1]) if len(out.parents) > 1 else out.name}")
+    print(
+        f"resolved {out.relative_to(out.parents[1]) if len(out.parents) > 1 else out.name}"
+    )
 
 
 def main(argv: list[str]) -> int:
