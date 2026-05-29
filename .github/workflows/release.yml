@@ -331,7 +331,7 @@ jobs:
       # attestation over nothing. Verifiable later with `gh attestation verify`.
       - name: Attest build provenance (SLSA L2, keyless)
         if: steps.binary.outputs.dry_run == '0' && hashFiles('dist/**') != ''
-        uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb # v2.1.0
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: "dist/*"
 
