@@ -56,7 +56,7 @@ cp "$APPIMAGE" "$BIN_DIR/$NAME"
 chmod +x "$BIN_DIR/$NAME"
 
 # --- Install the .desktop entry (menu integration). ---
-DESKTOP_SRC="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/$NAME.desktop"
+DESKTOP_SRC="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/$NAME.desktop"
 if [ -f "$DESKTOP_SRC" ]; then
   echo "==> Installing desktop entry to $APPS_DIR/$NAME.desktop"
   # Point Exec at the installed binary path.
@@ -64,7 +64,7 @@ if [ -f "$DESKTOP_SRC" ]; then
 fi
 
 # --- Install the icon (256px, hicolor theme). ---
-ICON_SRC="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/../../branding/$NAME/icon-256.png"
+ICON_SRC="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/../../branding/$NAME/icon-256.png"
 if [ -f "$ICON_SRC" ]; then
   echo "==> Installing icon to $ICON_DIR/$NAME.png"
   cp "$ICON_SRC" "$ICON_DIR/$NAME.png"
