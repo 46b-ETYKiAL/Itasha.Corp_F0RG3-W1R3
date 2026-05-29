@@ -1,0 +1,18 @@
+# Hash-locked CI tooling for the Linux x86_64 GitHub-hosted runner.
+# Consumed via: python -m pip install --require-hashes -r .github/requirements-ci.txt
+# Rationale: OSSF Scorecard Pinned-Dependencies (pipCommand) requires every
+# package-manager install to be hash-pinned. See ossf/scorecard discussion #4834
+# and the pip docs on "Hash-checking mode" / --require-hashes.
+# Regenerate hashes from the PyPI JSON API: https://pypi.org/pypi/<pkg>/<ver>/json
+# ubuntu-latest runner arch is x86_64; only the manylinux x86_64 wheel + sdist
+# are reachable, so only those hashes are pinned.
+
+# pip 26.1.1 (self-upgrade target; replaces `pip install --upgrade pip`)
+pip==26.1.1 \
+    --hash=sha256:99cb1c2899893b075ff56e4ed0af55669a955b49ad7fb8d8603ecdaf4ed653fb \
+    --hash=sha256:d36762751d156a4ee895de8af39aa0abeeeb577f93a2eca6ab62467bbf0f8a78
+
+# ruff 0.15.14 (Python lint/format tooling)
+ruff==0.15.14 \
+    --hash=sha256:715c543cf450c4888251f91c52f1942a800541d9bddd7ac060aa4e6b77ae7cba \
+    --hash=sha256:48e866b165be4a9bdbf310f7d3c9a07edef2fe8cd63ffeb4e00bb590506ebf9f

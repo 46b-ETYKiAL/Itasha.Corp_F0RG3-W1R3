@@ -43,8 +43,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install zizmor (pinned)
-        run: pip install "zizmor==1.25.2"
+      - name: Install zizmor (hash-pinned)
+        # Hash-pinned per OSSF Scorecard Pinned-Dependencies (pipCommand).
+        # Pins zizmor==1.25.2 by sha256; see .github/requirements-zizmor.txt.
+        run: python -m pip install --require-hashes -r .github/requirements-zizmor.txt
 
       - name: Run zizmor (SARIF)
         # zizmor v1.x always writes results to stdout — there is no

@@ -42,11 +42,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Python lint tooling (ruff, pinned)
+      - name: Install Python lint tooling (ruff, hash-pinned)
         run: |
           set -euo pipefail
-          python -m pip install --upgrade pip
-          pip install "ruff==0.15.14"
+          # Hash-pinned per OSSF Scorecard Pinned-Dependencies (pipCommand).
+          # Pins pip + ruff==0.15.14 by sha256; see .github/requirements-ci.txt.
+          python -m pip install --require-hashes -r .github/requirements-ci.txt
 
       - name: Ruff lint (Python test/validation scripts)
         run: ruff check tests packaging
