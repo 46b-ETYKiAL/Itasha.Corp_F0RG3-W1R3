@@ -76,7 +76,11 @@ jobs:
           found=0
           while IFS= read -r script; do
             found=1
-            shellcheck "$script"
+            # --severity=warning filters out info-level findings (e.g. SC1091
+            # 'Not following: relative source') that fire on cross-script
+            # `. "$DIR/_lib.sh"` patterns and don't represent real defects.
+            # Errors + warnings remain blocking.
+            shellcheck --severity=warning "$script"
           done < <(find packaging scripts tests -name '*.sh' 2>/dev/null)
           if [ "$found" -eq 0 ]; then
             echo "No shell scripts found to lint."
