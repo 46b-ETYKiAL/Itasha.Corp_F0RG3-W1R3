@@ -113,9 +113,12 @@ jobs:
           case "${{ runner.os }}" in
             Linux)   sudo apt-get update && sudo apt-get install -y minisign ;;
             macOS)   brew install minisign ;;
-            # Version-pinned per OSSF Scorecard Pinned-Dependencies (chocoCommand);
-            # the choco check is satisfied by an explicit --version.
-            Windows) choco install minisign --version=0.8.0 -y --no-progress ;;
+            # Version-pinned + checksum-enforced per OSSF Scorecard
+            # Pinned-Dependencies (chocoCommand). Scorecard's
+            # isChocoUnpinnedDownload treats a choco install as pinned ONLY
+            # when --require-checksums is present (--version alone is NOT
+            # sufficient); --version=0.8.0 additionally pins the package version.
+            Windows) choco install minisign --version=0.8.0 --require-checksums -y --no-progress ;;
           esac
           minisign -v || echo "::warning::minisign version probe non-zero (continuing)"
 
