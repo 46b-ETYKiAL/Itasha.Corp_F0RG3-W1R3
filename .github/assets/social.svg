@@ -75,7 +75,7 @@
   </g>
 
   <g style="animation: flicker 7s infinite;">
-    <text x="640" y="86" text-anchor="middle" font-size="14" fill="#5a6b73" letter-spacing="8" filter="url(#phos)" style="animation: titleBreathe 6s ease-in-out infinite;">I T A S H A . C O R P</text>
+    <text x="640" y="86" text-anchor="middle" font-size="14" fill="#5a6b73" letter-spacing="8" filter="url(#phos)" style="font-family: 'Times New Roman','Times','Matisse',serif; font-weight: 700; transform: scaleX(0.82); transform-origin: 640px 86px; animation: titleBreathe 6s ease-in-out infinite;">I T A S H A . C O R P</text>
     <g font-size="66" font-weight="bold" letter-spacing="7" text-anchor="middle">
       <text x="643" y="160" fill="#8c6cd0" opacity="0.5" filter="url(#soft)" style="animation: titleGlitch 5.5s steps(1) infinite; transform-origin: 640px 160px;">F0RG3-W1R3</text>
       <text x="637" y="160" fill="#34e0d0" opacity="0.5" filter="url(#soft)" style="animation: titleGlitch 6.3s steps(1) 0.1s infinite; transform-origin: 640px 160px;">F0RG3-W1R3</text>
@@ -85,7 +85,7 @@
     <text x="640" y="222" text-anchor="middle" font-size="12" fill="#5a6b73" letter-spacing="4" filter="url(#phos)">one config · every platform · branded installers</text>
 
     <g filter="url(#phos)">
-      <rect x="80" y="294" width="474" height="13" fill="#34e0d0" opacity="0.06" style="animation: readHead 4.5s ease-in-out infinite;"/>
+      <rect x="80" y="294" width="474" height="13" fill="#34e0d0" opacity="0.10" style="animation: readHead 4.5s ease-in-out infinite;"/>
       <text x="64" y="278" font-size="12" fill="#5a6b73">forge --app c0pl4nd ───────────────────────</text>
       <text x="84" y="308" font-size="12.5" fill="#34e0d0" style="animation: bootReveal 0.35s ease-out 0.2s both;">&gt; load packager.template.toml + override</text>
       <text x="544" y="308" font-size="12.5" fill="#6fb89a" style="animation: bootReveal 0.35s ease-out 0.2s both, okPulse 2s ease-in-out 0.6s infinite;">[ OK ]</text>
