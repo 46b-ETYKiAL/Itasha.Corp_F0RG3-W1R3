@@ -72,15 +72,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # No git push from this job; do not persist the token (zizmor artipacked).
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
 
-      # dtolnay/rust-toolchain@stable (pinned commit)
+      # dtolnay/rust-toolchain@stable (pinned to the real stable-branch HEAD SHA)
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb2c1ce8ea046b1c8c75b2 # stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: stable
 
@@ -136,8 +139,11 @@ jobs:
         shell: pwsh
         env:
           WINDOWS_CERT_THUMBPRINT: ${{ secrets.WINDOWS_CERT_THUMBPRINT }}
+          # Hoist untrusted step output into env so it is never expanded
+          # directly into the shell (zizmor template-injection).
+          DRY_RUN: ${{ steps.binary.outputs.dry_run }}
         run: |
-          if ("${{ steps.binary.outputs.dry_run }}" -eq "1") {
+          if ("$env:DRY_RUN" -eq "1") {
             .\scripts\build.ps1 -App $env:APP_NAME -DryRun
           } else {
             .\scripts\build.ps1 -App $env:APP_NAME
@@ -157,9 +163,12 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          # Hoist untrusted step output into env so it is never expanded
+          # directly into the shell (zizmor template-injection).
+          DRY_RUN: ${{ steps.binary.outputs.dry_run }}
         run: |
           set -euo pipefail
-          if [ "${{ steps.binary.outputs.dry_run }}" = "1" ]; then
+          if [ "$DRY_RUN" = "1" ]; then
             ./scripts/build.sh --app "$APP_NAME" --dry-run
           else
             ./scripts/build.sh --app "$APP_NAME"
@@ -177,9 +186,13 @@ jobs:
       - name: Build installer (Linux)
         if: runner.os == 'Linux'
         shell: bash
+        env:
+          # Hoist untrusted step output into env so it is never expanded
+          # directly into the shell (zizmor template-injection).
+          DRY_RUN: ${{ steps.binary.outputs.dry_run }}
         run: |
           set -euo pipefail
-          if [ "${{ steps.binary.outputs.dry_run }}" = "1" ]; then
+          if [ "$DRY_RUN" = "1" ]; then
             ./scripts/build.sh --app "$APP_NAME" --dry-run
           else
             ./scripts/build.sh --app "$APP_NAME"
@@ -403,19 +416,39 @@ jobs:
         if: hashFiles('release/*.minisig') == ''
         run: echo "::warning::updater feed (latest.json) SKIPPED — no .minisig signatures present (MINISIGN_SECRET_KEY absent in build). Gated-not-faked."
 
+      # Attach artifacts using the runner's pre-installed `gh` CLI rather than a
+      # third-party action (zizmor superfluous-actions). Creates the release for
+      # the tag if it does not exist yet, otherwise uploads/clobbers assets onto
+      # the existing release. Mirrors the prior fail_on_unmatched_files: false
+      # behaviour by guarding on glob presence before upload.
       - name: Attach artifacts to GitHub Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
-        with:
-          files: release/*
-          fail_on_unmatched_files: false
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release/*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::warning::No release/* artifacts found — nothing to attach."
+            exit 0
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            gh release create "$TAG" "${files[@]}" \
+              --title "C0PL4ND $TAG" \
+              --generate-notes
+          fi
 
       # actions/checkout@v6.0.2 — needed for the manifest-update tool.
       - name: Checkout (manifest tooling)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: framework
+          # No git push from this job; do not persist the token (zizmor artipacked).
+          persist-credentials: false
 
       - name: Set up Python (manifest tooling)
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
