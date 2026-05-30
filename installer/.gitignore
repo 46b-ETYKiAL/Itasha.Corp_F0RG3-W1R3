@@ -1,0 +1,5 @@
+/target
+*.png
+capture*.ps1
+inst*.txt
+inst.log
