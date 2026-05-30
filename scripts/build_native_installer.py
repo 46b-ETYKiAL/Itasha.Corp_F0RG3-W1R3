@@ -59,6 +59,14 @@ def zip_payload(binary_dir: Path, out_zip: Path) -> int:
 
 
 def main() -> None:
+    # Print UTF-8 regardless of the host console codepage (Windows cp1252 chokes
+    # on the kanji watermark). Safe no-op where stdout has no reconfigure.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        except (AttributeError, ValueError):
+            pass
+
     ap = argparse.ArgumentParser(description="Build the native Itasha.Corp installer for an app.")
     ap.add_argument("--app", required=True, help="per-app override stem (apps/<app>.toml)")
     ap.add_argument("--binary-dir", required=True, type=Path, help="dir holding the compiled binary + assets")
