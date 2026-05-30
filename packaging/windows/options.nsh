@@ -211,7 +211,7 @@ Function ItashaFinishRunGuard
     ; template). Leaving the run-checkbox checked launches the app.
   ${Else}
     ; Uncheck the finish-page run option when the user opted out.
-    !insertmacro MUI_INSTALLOPTIONS_WRITE "ioSpecial.ini" "Field 4" "State" "0"
+    WriteINIStr "$PLUGINSDIRioSpecial.ini" "Field 4" "State" "0"
   ${EndIf}
 FunctionEnd
 
