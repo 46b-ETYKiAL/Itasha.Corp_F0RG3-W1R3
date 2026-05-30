@@ -36,3 +36,9 @@ updater_pubkey = "${MINISIGN_PUBLIC_KEY}"
 # Self-hosted update endpoint (no third-party update service). The updater
 # expands {{target}}/{{arch}}/{{current_version}} at check time.
 updater_endpoint = "https://github.com/itasha-corp/c0pl4nd/releases/latest/download/latest.json"
+
+# --- Native installer brand (CRT provisioning-console accent) ---
+[itasha.brand]
+voice_hex = "#B48CE8"   # C0PL4ND banner voice colour
+kanji     = "端末"       # "terminal"
+tagline   = "The operator's shell into the wired."

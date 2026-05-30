@@ -3,3 +3,4 @@
 capture*.ps1
 inst*.txt
 inst.log
+/payload-staging

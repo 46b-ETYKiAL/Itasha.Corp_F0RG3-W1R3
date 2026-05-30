@@ -202,7 +202,11 @@ impl App {
             Pos2::new(split + 24.0, rect.top() + 40.0),
             Pos2::new(rect.right() - 40.0, rect.bottom() - 56.0),
         );
-        let mut ui = ui.child_ui(console, egui::Layout::top_down(egui::Align::Min), None);
+        let mut ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(console)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
         ui.add_space(4.0);
         section_label(&mut ui, "PARTITION · designate install node");
         ui.add_space(6.0);
@@ -247,7 +251,11 @@ impl App {
             Pos2::new(console.right() - 220.0, console.bottom() - 6.0),
             Pos2::new(console.right(), console.bottom() + 34.0),
         );
-        let mut bui = ui.child_ui(btn_rect, egui::Layout::right_to_left(egui::Align::Center), None);
+        let mut bui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(btn_rect)
+                .layout(egui::Layout::right_to_left(egui::Align::Center)),
+        );
         let valid = !self.dir.trim().is_empty();
         if bui
             .add_enabled(valid, brand_button("INITIATE  ▸", v))
@@ -347,7 +355,11 @@ impl App {
         // finish controls
         if done || failed {
             let br = Rect::from_min_max(Pos2::new(rect.right() - 320.0, rect.bottom() - 48.0), Pos2::new(rect.right() - 40.0, rect.bottom() - 12.0));
-            let mut bui = ui.child_ui(br, egui::Layout::right_to_left(egui::Align::Center), None);
+            let mut bui = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(br)
+                    .layout(egui::Layout::right_to_left(egui::Align::Center)),
+            );
             if bui.add(brand_button("CLOSE", theme::MUTED)).clicked() {
                 std::process::exit(if failed { 1 } else { 0 });
             }
@@ -493,10 +505,90 @@ fn pick_folder() -> Option<String> {
     }
 }
 
+/// Headless install (winget/enterprise unattended + automated testing).
+/// Flags: --silent [--dir <path>] [--no-start-menu] [--desktop] [--add-path]
+fn silent_install(args: &[String]) -> ! {
+    let flag = |n: &str| args.iter().any(|a| a == n);
+    let val = |n: &str| {
+        args.iter()
+            .position(|a| a == n)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
+    let dir = val("--dir").unwrap_or_else(default_dir);
+    let opts = engine::Opts {
+        dir: PathBuf::from(dir.trim().trim_matches('"')),
+        start_menu: !flag("--no-start-menu"),
+        desktop: flag("--desktop"),
+        add_path: flag("--add-path"),
+    };
+    println!("itasha-installer: silent install -> {}", opts.dir.display());
+    let cb = |s: engine::Step| println!("  [{:>3.0}%] {}", s.frac * 100.0, s.label);
+    match engine::install(&opts, PAYLOAD, &cb) {
+        Ok(()) => {
+            println!("OK: {} installed.", config::APP_NAME);
+            std::process::exit(0)
+        }
+        Err(e) => {
+            eprintln!("FAIL: {e}");
+            std::process::exit(1)
+        }
+    }
+}
+
+/// A small CRT-styled, voice-coloured window/taskbar icon (generated, no asset).
+fn app_icon() -> egui::IconData {
+    let (w, h) = (64usize, 64usize);
+    let v = theme::voice();
+    let mut rgba = vec![0u8; w * h * 4];
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) * 4;
+            let (mut r, mut g, mut b) = (7u8, 10u8, 12u8); // void
+            let inset = 8;
+            let inside = x > inset && x < w - 1 - inset && y > inset && y < h - 1 - inset;
+            let border = (x == inset || x == w - 1 - inset || y == inset || y == h - 1 - inset)
+                && x >= inset
+                && x <= w - 1 - inset
+                && y >= inset
+                && y <= h - 1 - inset;
+            if inside {
+                r = 12;
+                g = 16;
+                b = 19;
+            }
+            if border {
+                r = v.r();
+                g = v.g();
+                b = v.b();
+            }
+            let (dx, dy) = (x as i32 - 32, y as i32 - 32);
+            if dx * dx + dy * dy < 18 {
+                r = v.r();
+                g = v.g();
+                b = v.b();
+            }
+            rgba[i] = r;
+            rgba[i + 1] = g;
+            rgba[i + 2] = b;
+            rgba[i + 3] = 255;
+        }
+    }
+    egui::IconData {
+        rgba,
+        width: w as u32,
+        height: h as u32,
+    }
+}
+
 fn main() -> eframe::Result<()> {
-    if std::env::args().any(|a| a == "--uninstall") {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--uninstall") {
         let _ = engine::uninstall();
         return Ok(());
+    }
+    if args.iter().any(|a| a == "--silent") {
+        silent_install(&args);
     }
 
     let options = eframe::NativeOptions {
@@ -504,6 +596,7 @@ fn main() -> eframe::Result<()> {
             .with_inner_size([900.0, 560.0])
             .with_min_inner_size([900.0, 560.0])
             .with_resizable(false)
+            .with_icon(std::sync::Arc::new(app_icon()))
             .with_title(format!("{} — Itasha.Corp installer", config::APP_NAME)),
         ..Default::default()
     };

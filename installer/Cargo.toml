@@ -11,6 +11,12 @@ publish = false
 name = "itasha-installer"
 path = "src/main.rs"
 
+[features]
+# `elevate` embeds the requireAdministrator manifest (production default).
+# Build the visual-QA / headless-test binary with --no-default-features.
+default = ["elevate"]
+elevate = []
+
 [dependencies]
 eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts"] }
 egui = "0.29"

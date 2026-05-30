@@ -12,9 +12,10 @@ fn main() {
     #[cfg(windows)]
     {
         use embed_manifest::{embed_manifest, manifest::ExecutionLevel, new_manifest};
-        // ITASHA_NO_ELEVATE=1 builds a non-elevated test exe (visual QA without UAC).
+        // The `elevate` feature (default) embeds requireAdministrator. Build the
+        // visual-QA / headless-test binary with --no-default-features.
         if std::env::var_os("CARGO_CFG_WINDOWS").is_some()
-            && std::env::var_os("ITASHA_NO_ELEVATE").is_none()
+            && std::env::var_os("CARGO_FEATURE_ELEVATE").is_some()
         {
             embed_manifest(
                 new_manifest("ItashaCorp.Installer")
