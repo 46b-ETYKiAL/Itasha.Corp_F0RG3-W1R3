@@ -20,3 +20,12 @@ icon_png = "branding/scr1b3/icon-256.png"
 icon_icns = "branding/scr1b3/icon.icns"
 formats = ["nsis", "dmg", "appimage", "deb"]
 desktop_file = "scr1b3.desktop"
+
+# --- Native installer brand (optional CRT provisioning-console accent) ---
+# Optional block: the native installer crate reads these for its branded
+# provisioning console. Absent => the crate falls back to neutral defaults.
+# Mirrors the C0PL4ND example so onboarding-a-new-app.md has a second reference.
+[itasha.brand]
+voice_hex = "#8CE8B4"   # SCR1B3 banner voice colour
+kanji     = "記録"       # "record / note"
+tagline   = "Capture the signal before it fades."
