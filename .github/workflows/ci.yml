@@ -159,10 +159,43 @@ jobs:
             [ -f "$s" ] && bash -n "$s" && echo "syntax OK: $s"
           done
 
+  secret-hygiene:
+    name: Secret hygiene (gitleaks)
+    # ALWAYS run so a skipped job cannot be reported as a green required check.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (egress audit)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Full history so the gitleaks history scan covers every commit.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks (pinned)
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION="8.30.1"
+          curl -fsSL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks version
+
+      - name: Gitleaks — working tree (no-git)
+        run: ./gitleaks detect --source . --no-git --config .gitleaks.toml --redact
+
+      - name: Gitleaks — full history
+        run: ./gitleaks detect --source . --config .gitleaks.toml --redact
+
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-    needs: [lint-and-validate, powershell-lint, signing-dry-run]
+    needs: [lint-and-validate, powershell-lint, signing-dry-run, secret-hygiene]
     if: always()
     steps:
       - name: Verify all required jobs succeeded
@@ -172,6 +205,7 @@ jobs:
             [lint-and-validate]="${{ needs.lint-and-validate.result }}"
             [powershell-lint]="${{ needs.powershell-lint.result }}"
             [signing-dry-run]="${{ needs.signing-dry-run.result }}"
+            [secret-hygiene]="${{ needs.secret-hygiene.result }}"
           )
           failed=0
           for job in "${!results[@]}"; do

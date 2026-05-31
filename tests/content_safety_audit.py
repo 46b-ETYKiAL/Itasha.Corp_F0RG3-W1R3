@@ -20,6 +20,7 @@ Exit codes: 0 clean; 1 leakage detected; 2 IO/usage error.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -41,6 +42,14 @@ SKIP_DIRS = {
     "__pycache__",
     ".s4f3-data",
     ".claude-data",
+}
+
+# Detector / scanner config files that DESCRIBE key-shapes by design (exactly
+# like this auditor itself). They legitimately contain key-shape patterns and
+# must not be scanned for content patterns — the same exemption already applied
+# to this auditor via self_path.
+DETECTOR_CONFIG_NAMES = {
+    ".gitleaks.toml",
 }
 
 # Secret-bearing file extensions that must never appear in the tree.
@@ -116,13 +125,43 @@ def _iter_files() -> list[Path]:
     return out
 
 
+def _git_tracked_files() -> list[str] | None:
+    """Return git-tracked paths (relative, forward-slash), or None if git is
+    unavailable. Used to assert no key-shaped path is TRACKED — the strongest
+    public-repo guarantee (an untracked local key is the developer's problem;
+    a tracked one is a leak)."""
+    try:
+        out = subprocess.run(
+            ["git", "ls-files"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return [line.strip() for line in out.stdout.splitlines() if line.strip()]
+
+
 def main() -> int:
     findings: list[str] = []
     self_path = Path(__file__).resolve()
+    detector_config_paths = {(ROOT / name).resolve() for name in DETECTOR_CONFIG_NAMES}
 
     files = _iter_files()
 
-    # 1. Secret-file extensions.
+    # 0. Tracked key-shaped paths — a TRACKED secret-suffix file is a hard leak
+    # in a public repo. git ls-files is the source of truth; falls back to the
+    # on-disk suffix scan (step 1) when git is unavailable.
+    tracked = _git_tracked_files()
+    if tracked is not None:
+        secret_ext = tuple(SECRET_SUFFIXES)
+        for rel in tracked:
+            low = rel.lower()
+            if low.endswith(secret_ext) or "secrets/" in (low + "/"):
+                findings.append(f"tracked key-shaped path: {rel}")
+
+    # 1. Secret-file extensions (on-disk scan; complements the tracked scan).
     for p in files:
         if p.suffix.lower() in SECRET_SUFFIXES:
             findings.append(f"secret file present: {p.relative_to(ROOT)}")
@@ -136,9 +175,11 @@ def main() -> int:
                     f"vendored app source tree: {child.relative_to(ROOT)}/src"
                 )
 
-    # 3. Content patterns in text files (skip this auditor itself).
+    # 3. Content patterns in text files (skip this auditor itself + detector
+    # config files that describe key-shapes by design, e.g. .gitleaks.toml).
     for p in files:
-        if p.resolve() == self_path:
+        rp = p.resolve()
+        if rp == self_path or rp in detector_config_paths:
             continue
         if p.suffix.lower() not in TEXT_SUFFIXES:
             continue
