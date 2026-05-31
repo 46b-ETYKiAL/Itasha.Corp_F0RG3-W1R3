@@ -14,6 +14,8 @@ wider Itasha.Corp surface).
 | `footer.svg` | Repo brand footer (CRT strip). Mirror of `.github/assets/footer.svg`. |
 | `dmg-background.svg` | macOS disk-image background source (drag-to-Applications hint). |
 | `<app>/icon.svg` | Per-app app-icon source (e.g. `c0pl4nd/icon.svg`). |
+| `<app>/nsis-sidebar.svg` | Per-app installer **welcome sidebar** (164×314) — the branded `<app>` / by / Itasha.Corp wordmark splash. See [`INSTALLER-BRANDING.md`](INSTALLER-BRANDING.md). |
+| `<app>/nsis-header.svg` | Per-app installer **page header** (150×57) — compact wordmark + mark strip. See [`INSTALLER-BRANDING.md`](INSTALLER-BRANDING.md). |
 
 The canonical README banner/footer live at `.github/assets/{header,footer}.svg`;
 the `branding/` copies exist so the engine config's `branding/banner.svg` /

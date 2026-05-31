@@ -116,17 +116,32 @@ else
   echo "NOTICE: no .icns tool (iconutil on macOS / png2icns elsewhere) — .icns skipped." >&2
 fi
 
-# --- NSIS wizard art (BMP). header 150x57, sidebar 164x314. ---
+# --- NSIS wizard art (BMP3). Per-app branded sidebar 164x314 + header 150x57. ---
+# Rasterized from the committed per-app SVG sources (the fully-branded wordmark
+# splashes), NOT a bare icon on a black plate. NSIS needs BMP3 (24-bit, no
+# alpha), so each PNG is flattened onto the VOID-BLACK plate. See
+# INSTALLER-BRANDING.md for the per-app splash standard.
+SIDEBAR_SVG="$BRANDING/$APP/nsis-sidebar.svg"
+HEADER_SVG="$BRANDING/$APP/nsis-header.svg"
 if command -v convert >/dev/null 2>&1; then
-  echo "==> Generating NSIS wizard bitmaps"
-  # Header: scaled icon on the brand background strip.
-  convert -size 150x57 xc:'#08060d' \
-    \( "$ICON_SVG" -background none -resize 48x48 \) -gravity East -geometry +12+0 -composite \
-    "BMP3:$BRANDING/nsis-header.bmp"
-  # Sidebar: brand background with the icon centered.
-  convert -size 164x314 xc:'#08060d' \
-    \( "$ICON_SVG" -background none -resize 120x120 \) -gravity North -geometry +0+40 -composite \
-    "BMP3:$BRANDING/nsis-sidebar.bmp"
+  NSIS_TMP="$(mktemp -d)"
+  if [ -f "$SIDEBAR_SVG" ]; then
+    echo "==> Generating NSIS sidebar (164x314) from $APP/nsis-sidebar.svg"
+    svg_to_png "$SIDEBAR_SVG" "$NSIS_TMP/sidebar.png" 164 314
+    convert "$NSIS_TMP/sidebar.png" -background '#08060d' -flatten \
+      "BMP3:$BRANDING/nsis-sidebar.bmp"
+  else
+    echo "NOTICE: $APP/nsis-sidebar.svg missing — sidebar skipped (no asset faked)." >&2
+  fi
+  if [ -f "$HEADER_SVG" ]; then
+    echo "==> Generating NSIS header (150x57) from $APP/nsis-header.svg"
+    svg_to_png "$HEADER_SVG" "$NSIS_TMP/header.png" 150 57
+    convert "$NSIS_TMP/header.png" -background '#08060d' -flatten \
+      "BMP3:$BRANDING/nsis-header.bmp"
+  else
+    echo "NOTICE: $APP/nsis-header.svg missing — header skipped (no asset faked)." >&2
+  fi
+  rm -rf "$NSIS_TMP"
 else
   echo "NOTICE: ImageMagick 'convert' absent — NSIS bitmaps skipped." >&2
 fi
