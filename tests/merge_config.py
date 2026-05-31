@@ -43,6 +43,17 @@ from typing import Any
 
 import tomllib
 
+# The reproducible-build gate runs this under `LC_ALL=C` for determinism, which
+# makes Python default stdout/stderr to ASCII (strict error handler). Our
+# diagnostics carry typographic characters (em-dash U+2014, section sign
+# U+00A7), so an ASCII locale would raise UnicodeEncodeError and crash the
+# merge — failing `build.sh --dry-run` in the gate. Force UTF-8 so the
+# diagnostics are locale-independent.
+for _stream in (sys.stdout, sys.stderr):
+    _reconfigure = getattr(_stream, "reconfigure", None)
+    if _reconfigure is not None:
+        _reconfigure(encoding="utf-8")
+
 # ---------------------------------------------------------------------------
 # Placeholder resolution
 # ---------------------------------------------------------------------------
