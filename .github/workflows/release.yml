@@ -159,6 +159,42 @@ jobs:
             Write-Host "::notice::Windows signing credential present; signtool path engaged."
           }
 
+      # --- Windows: reserved WiX-MSI track (G3) ---
+      # Builds the enterprise Group-Policy/Intune MSI ALONGSIDE the NSIS .exe.
+      # Honest-gate: the WiX v6 dotnet tool is installed on the fly; if the
+      # install or the build fails (or no binary input in a dry-run) the MSI is
+      # SKIPPED with a ::warning::, never faked. The NSIS .exe remains the
+      # primary branded installer and is unaffected.
+      - name: Build reserved WiX-MSI (Windows)
+        if: runner.os == 'Windows' && steps.binary.outputs.dry_run == '0'
+        shell: pwsh
+        env:
+          WIX_TOOLSET_VERSION: "6.0.0"
+        run: |
+          $ErrorActionPreference = "Stop"
+          # Install the pinned WiX v6 toolset + matching UI extension.
+          dotnet tool install --global wix --version $env:WIX_TOOLSET_VERSION 2>$null
+          $env:PATH = "$env:PATH;$env:USERPROFILE\.dotnet\tools"
+          wix extension add -g "WixToolset.UI.wixext/$env:WIX_TOOLSET_VERSION" 2>$null
+          if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
+            Write-Host "::warning::WiX v6 toolset unavailable — reserved MSI track SKIPPED (not faked). NSIS .exe remains the primary installer."
+            exit 0
+          }
+          # Resolve the binary input + a version from the tag (fallback 0.1.0).
+          $ver = "$env:GITHUB_REF_NAME" -replace '^v',''
+          if ([string]::IsNullOrEmpty($ver)) { $ver = "0.1.0" }
+          $binPath = $env:ITASHA_BINARY_PATH
+          if ([string]::IsNullOrEmpty($binPath) -or -not (Test-Path $binPath)) {
+            Write-Host "::warning::No resolvable binary input for the MSI build — reserved MSI track SKIPPED (not faked)."
+            exit 0
+          }
+          & .\packaging\windows\wix\build-wix.ps1 -App $env:APP_NAME -Binary $binPath -Version $ver
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::WiX-MSI build failed (toolset present, build errored). Investigate product.wxs / inputs."
+            exit 1
+          }
+          Write-Host "::notice::Reserved WiX-MSI built alongside the NSIS .exe."
+
       # --- macOS build + sign + notarize + staple ---
       - name: Build installer (macOS)
         if: runner.os == 'macOS'
@@ -183,8 +219,12 @@ jobs:
           else
             echo "::notice::Apple signing identity present; sign+notarize+staple engaged."
             # The dmg path is produced by cargo-packager under dist/; the helper
-            # detects absent creds itself and exits 0 honestly if so.
-            ./packaging/macos/sign-notarize-staple.sh || true
+            # detects absent creds itself and exits 0 honestly if so. The script's
+            # post-staple stapler-validate + spctl-assess verdict is now
+            # LOAD-BEARING (T3.1 dropped the in-script '|| true'); the CI-side
+            # '|| true' that previously re-swallowed it is REMOVED so a failed
+            # Gatekeeper assertion fails the build (creds-present path).
+            ./packaging/macos/sign-notarize-staple.sh
           fi
 
       # --- Linux build ---
