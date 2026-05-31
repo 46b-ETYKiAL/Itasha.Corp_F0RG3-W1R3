@@ -19,17 +19,24 @@
 param([string]$DistDir = "dist")
 $ErrorActionPreference = "Stop"
 
-$thumb = $env:WINDOWS_CERT_THUMBPRINT
-if ([string]::IsNullOrWhiteSpace($thumb)) {
-    Write-Host "::warning::WINDOWS_CERT_THUMBPRINT absent — Windows installers UNSIGNED (Authenticode tier skipped). Generate a free self-signed cert with scripts/gen-selfsigned-cert.ps1, or supply a paid OV/EV cert. Never faked."
-    exit 0
+# Shared key-handle resolver (also used by sign-cloud.ps1). Dot-sourcing only
+# defines functions; it runs no signing logic. NEVER touches a key value.
+. "$PSScriptRoot/_sign-key-resolver.ps1"
+
+# BYO cloud/HSM signing takes precedence when ITASHA_CLOUD_SIGNING=1 (opt-in,
+# default-OFF). Delegate to sign-cloud.ps1 (CA/B-Forum 2023 hardware-key
+# mandate path) and stop — the thumbprint path below is the free default.
+if ($env:ITASHA_CLOUD_SIGNING -eq "1") {
+    Write-Host "==> ITASHA_CLOUD_SIGNING=1 — delegating to scripts/sign-cloud.ps1 (BYO HSM/KMS)."
+    & "$PSScriptRoot/sign-cloud.ps1" -DistDir $DistDir
+    exit $LASTEXITCODE
 }
-$cert = Get-ChildItem -Path Cert:\CurrentUser\My, Cert:\LocalMachine\My -CodeSigningCert -ErrorAction SilentlyContinue |
-    Where-Object { $_.Thumbprint -eq $thumb } | Select-Object -First 1
-if ($null -eq $cert) {
-    Write-Host "::warning::No code-signing cert with thumbprint $thumb found — skipping Authenticode signing."
-    exit 0
-}
+
+# Default free path: resolve the Authenticode cert by WINDOWS_CERT_THUMBPRINT
+# via the shared resolver (absent thumbprint / no matching cert => $null =>
+# honest unsigned exit 0, never faked).
+$cert = Resolve-ThumbprintIdentity
+if ($null -eq $cert) { exit 0 }
 if (-not (Test-Path $DistDir)) { Write-Host "No $DistDir/ — nothing to sign."; exit 0 }
 
 $tsUrl = "http://timestamp.digicert.com"  # free public RFC-3161 TSA
@@ -45,7 +52,7 @@ Get-ChildItem -Path $DistDir -Include *.exe, *.msi -Recurse | ForEach-Object {
         exit 1
     }
 }
-Write-Host "==> Authenticode: signed $signed file(s) with cert $thumb."
+Write-Host "==> Authenticode: signed $signed file(s) with cert $($cert.Thumbprint)."
 if ($cert.Issuer -eq $cert.Subject) {
     Write-Host "    (self-signed cert — enterprise allow-listing only; SmartScreen still warns public users)"
 }
