@@ -7,7 +7,7 @@
 <p align="center"><strong>one config · every platform · branded installers</strong></p>
 
 <p align="center">
-  <a href="#"><img alt="Validate" src="https://img.shields.io/badge/validate-passing-22d3c7?style=flat-square" /></a>
+  <a href="#"><img alt="CI" src="https://img.shields.io/badge/CI-lint%20%C2%B7%20gitleaks%20%C2%B7%20verify%20%C2%B7%20reproducible-22d3c7?style=flat-square" /></a>
   <a href="#license"><img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-ff2d78?style=flat-square" /></a>
   <a href="#"><img alt="Engine" src="https://img.shields.io/badge/engine-cargo--packager%200.11.8-0b0b0f?style=flat-square" /></a>
   <a href="#"><img alt="Targets" src="https://img.shields.io/badge/targets-Windows%20%7C%20macOS%20%7C%20Linux-22d3c7?style=flat-square" /></a>
@@ -187,6 +187,19 @@ A brand-new signing identity has no reputation yet, so Windows SmartScreen may w
 This framework is structured to live in its own **public** repository. Read [`ships-publicly-vs-never.md`](./ships-publicly-vs-never.md): no app source, no signing keys, no secrets, no internal paths — binaries are consumed as release artifacts. The `tests/content_safety_audit.py` script enforces this and runs in CI; a PR that fails it cannot merge.
 
 ---
+
+## Documentation
+
+| Doc | What it covers |
+|-----|----------------|
+| [`docs/onboarding-a-new-app.md`](docs/onboarding-a-new-app.md) | Add a new app as a small override (files, branding, manifests). |
+| [`docs/release-runbook.md`](docs/release-runbook.md) | Cut / verify / yank / rollback a release; cert rotation; degradation matrix. |
+| [`docs/key-custody.md`](docs/key-custody.md) | Handle-not-value discipline, CA/B-Forum hardware-key mandate, BYO cloud signing. |
+| [`docs/macos-gatekeeper.md`](docs/macos-gatekeeper.md) | The asserted staple + spctl Gatekeeper chain; first-run guidance. |
+| [`docs/binary-input-contract.md`](docs/binary-input-contract.md) | How a compiled binary is consumed as a build input. |
+| [`docs/reproducible-build.md`](docs/reproducible-build.md) | The unsigned-payload byte-identity guarantee. |
+| [`docs/sbom.md`](docs/sbom.md) · [`docs/verify-cosign.md`](docs/verify-cosign.md) | Supply-chain SBOM + cosign-keyless verification. |
+| [`docs/adr/`](docs/adr/) | Architecture decisions (engine, reserved MSI, signing posture, production hardening). |
 
 ## Contributing
 
