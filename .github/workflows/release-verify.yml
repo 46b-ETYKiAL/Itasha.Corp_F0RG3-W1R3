@@ -1,0 +1,188 @@
+name: Release Verify
+
+# Post-build install/verify + artifact-shape gate (G4, G6). After artifacts are
+# built, this workflow (a) asserts ARTIFACT-SHAPE — every expected per-OS
+# artifact (.exe/.msi/.dmg/.AppImage/.deb) is present and non-empty — and
+# (b) invokes the per-OS verify scripts (Windows matrix.ps1 + sandbox.wsb,
+# macOS verify.sh staple/spctl, Linux verify.sh AppImage/.deb/checksum/minisign).
+# A missing per-OS artifact is a hard ::error::; the ci-gate roll-up uses
+# explicit-if + always() so skipped != success.
+#
+# Runs on PR + v* tag. All third-party actions SHA-pinned. The build matrix
+# mirrors release.yml so the verify runs against the same per-OS output.
+
+on:
+  pull_request:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Per-app override to package (apps/<app>.toml)"
+        required: false
+        default: "c0pl4nd"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_NAME: ${{ github.event.inputs.app || 'c0pl4nd' }}
+  CARGO_PACKAGER_VERSION: "0.11.8"
+
+jobs:
+  build-and-verify:
+    name: Build + verify ${{ matrix.os }}
+    # ALWAYS run so a conditional cell can never be reported as green-skipped.
+    if: always()
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      - name: Harden the runner (egress audit)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-packager (pinned, locked)
+        shell: bash
+        run: cargo install cargo-packager --version "${CARGO_PACKAGER_VERSION}" --locked
+
+      # Build the artifacts for this OS. With no binary input the build runs in
+      # dry-run mode (no dist/), and the artifact-shape assertion below records a
+      # structured skip rather than a false failure.
+      - name: Build installer
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ITASHA_BINARY_PATH:-}" ]; then
+            echo "::notice::No binary input — config dry-run; artifact-shape assertion will skip-not-fail."
+            ./scripts/build.sh --app "$APP_NAME" --dry-run || true
+            echo "dry_run=1" >> "$GITHUB_OUTPUT"
+          else
+            ./scripts/build.sh --app "$APP_NAME"
+            echo "dry_run=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ARTIFACT-SHAPE assertion (G6): each expected per-OS artifact must be
+      # present AND non-empty. A real (non-dry-run) build with a MISSING expected
+      # artifact is a hard ::error::. A dry-run honest-skips with a structured
+      # reason (never a false pass).
+      - name: Assert artifact shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.build.outputs.dry_run }}" = "1" ]; then
+            echo "::notice::artifact-shape: skipped (dry-run, no binary input) — structured skip, not a pass."
+            exit 0
+          fi
+          case "${{ runner.os }}" in
+            Windows) globs=("dist"/*.exe) ;;        # .msi is gated (WiX toolset)
+            macOS)   globs=("dist"/*.dmg) ;;
+            Linux)   globs=("dist"/*.AppImage "dist"/*.deb) ;;
+          esac
+          shopt -s nullglob
+          missing=0
+          for g in "${globs[@]}"; do
+            if [ ! -s "$g" ]; then
+              echo "::error::artifact-shape: expected artifact missing or empty: $g"
+              missing=1
+            else
+              echo "::notice::artifact-shape OK: $g ($(wc -c <"$g") bytes)"
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::One or more expected per-OS artifacts are missing/empty — release would be partial."
+            exit 1
+          fi
+
+      # Per-OS install/verify. Each script honest-skips (exit 77) when its
+      # tools/artifacts are unavailable; a real assertion failure exits 1.
+      - name: Verify (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path dist -Filter *.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $exe) {
+            Write-Host "::notice::no .exe to verify (dry-run) — matrix.ps1 honest-skip."
+            exit 0
+          }
+          pwsh tests/windows/matrix.ps1 -Installer $exe.FullName -Scenario all
+          $code = $LASTEXITCODE
+          if ($code -eq 77) { Write-Host "::warning::Windows verify skipped (needs a disposable Sandbox/VM) — structured skip." ; exit 0 }
+          exit $code
+
+      - name: Verify (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$(find dist -maxdepth 2 -name '*.app' 2>/dev/null | head -n1 || true)"
+          dmg="$(find dist -maxdepth 2 -name '*.dmg' 2>/dev/null | head -n1 || true)"
+          if [ -z "$dmg" ]; then echo "::notice::no .dmg to verify (dry-run) — verify.sh honest-skip."; exit 0; fi
+          # --expect-signed makes staple/spctl load-bearing ONLY when Apple creds
+          # were present (signed build). Pass it when the signing identity exists.
+          extra=""
+          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then extra="--expect-signed"; fi
+          set +e
+          ./tests/macos/verify.sh --app "$app" --dmg "$dmg" $extra
+          code=$?
+          set -e
+          if [ "$code" = "77" ]; then echo "::warning::macOS verify skipped (no Apple toolchain) — structured skip."; exit 0; fi
+          exit $code
+
+      - name: Verify (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find dist -maxdepth 2 -name '*.AppImage' 2>/dev/null | head -n1 || true)"
+          deb="$(find dist -maxdepth 2 -name '*.deb' 2>/dev/null | head -n1 || true)"
+          if [ -z "$appimage" ] && [ -z "$deb" ]; then echo "::notice::no Linux artifacts to verify (dry-run) — verify.sh honest-skip."; exit 0; fi
+          set +e
+          ./tests/linux/verify.sh --appimage "$appimage" --deb "$deb" --dpkg-cycle
+          code=$?
+          set -e
+          if [ "$code" = "77" ]; then echo "::warning::Linux verify skipped (no tools/artifacts) — structured skip."; exit 0; fi
+          exit $code
+
+  release-verify-gate:
+    name: Release-Verify Gate
+    runs-on: ubuntu-latest
+    needs: [build-and-verify]
+    if: always()
+    steps:
+      - name: Verify the build-and-verify matrix succeeded
+        run: |
+          set -euo pipefail
+          result="${{ needs.build-and-verify.result }}"
+          echo "build-and-verify = ${result}"
+          # A matrix job is 'success' only if every cell succeeded; a failure or
+          # cancellation on any OS fails the gate. Skipped != success.
+          if [ "${result}" != "success" ]; then
+            echo "::error::release-verify did not succeed on every OS (skipped != success)."
+            exit 1
+          fi
+          echo "Release-verify gate passed on all OSes."

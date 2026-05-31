@@ -34,13 +34,16 @@ param(
     [string]$Installer,
     [ValidateSet('all', 'fresh', 'upgrade', 'uninstall', 'silent', 'shortcuts')]
     [string]$Scenario = 'all',
-    [string]$PreviousInstaller
+    [string]$PreviousInstaller,
+    # App identity — defaults to C0PL4ND for backward compatibility. Pass -App
+    # to verify any onboarded app (e.g. SCR1B3) without editing the script.
+    [string]$App = 'C0PL4ND'
 )
 
 $ErrorActionPreference = 'Stop'
 $SKIP = 77
-$InstallDir = 'C:\Program Files\Itasha.Corp\C0PL4ND'
-$AppName = 'C0PL4ND'
+$AppName = $App
+$InstallDir = "C:\Program Files\Itasha.Corp\$AppName"
 
 function Write-Pass([string]$m) { Write-Host "PASS: $m" }
 function Write-Fail([string]$m) { Write-Error "FAIL: $m"; $script:Failed = $true }
