@@ -1,0 +1,18 @@
+# winget default-locale manifest (template) — Itasha.Corp SCR1B3
+# Schema: https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: ItashaCorp.SCR1B3
+PackageVersion: ${VERSION}
+PackageLocale: en-US
+Publisher: Itasha.Corp
+PublisherUrl: https://github.com/itasha-corp
+PackageName: SCR1B3
+PackageUrl: https://github.com/itasha-corp/scr1b3
+License: MIT OR Apache-2.0
+ShortDescription: Fast, cross-platform note-taking and scribe app
+Description: SCR1B3 is a fast, cross-platform note-taking app from Itasha.Corp.
+Tags:
+  - notes
+  - note-taking
+  - cross-platform
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

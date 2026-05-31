@@ -1,0 +1,33 @@
+{
+  "//": "Scoop manifest (template) — Itasha.Corp SCR1B3. Lives in the Itasha.Corp Scoop bucket (add via `scoop bucket add itasha-corp https://github.com/itasha-corp/scoop-bucket`, then `scoop install itasha-corp/scr1b3`). The __PLACEHOLDER__ values (version/url/hash) seed the first publish; thereafter the checkver + autoupdate blocks below let `scoop update` resolve the new version and recompute the hash AUTONOMOUSLY from the published asset — no hand-edited hash, ever (WezTerm #7713 hash-drift avoidance). Scoop installs the NSIS .exe per-user; for a per-machine install use winget (Scope: machine) or the installer directly.",
+  "version": "__VERSION__",
+  "description": "Fast, cross-platform note-taking and scribe app",
+  "homepage": "https://github.com/itasha-corp/scr1b3",
+  "license": "MIT OR Apache-2.0",
+  "architecture": {
+    "64bit": {
+      "url": "__INSTALLER_URL__",
+      "hash": "__INSTALLER_SHA256__"
+    }
+  },
+  "innosetup": false,
+  "installer": {
+    "args": ["/S"]
+  },
+  "uninstaller": {
+    "args": ["/S"]
+  },
+  "checkver": {
+    "github": "https://github.com/itasha-corp/scr1b3"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/itasha-corp/scr1b3/releases/download/v$version/scr1b3-$version-x86_64-setup.exe"
+      }
+    },
+    "hash": {
+      "url": "$url.sha256"
+    }
+  }
+}

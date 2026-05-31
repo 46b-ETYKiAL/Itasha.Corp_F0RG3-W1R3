@@ -1,2 +1,44 @@
+# ---------------------------------------------------------------------------
+# Build outputs (never committed; reproduced from source + a binary input).
+# ---------------------------------------------------------------------------
 /_payload
 /dist
+/out
+/build
+/binaries
+/inputs
+target/
+# Generated merged cargo-packager config (build.sh output, never source).
+packaging/build/
+
+# ---------------------------------------------------------------------------
+# Secret / signing-key material — NEVER committed to this PUBLIC repo.
+# The build pipeline references every credential BY NAME (CI secret / Keychain
+# / HSM handle), never as a file in the tree. These globs are a belt-and-braces
+# backstop behind the wired gitleaks gate + tests/content_safety_audit.py.
+# The PUBLIC verification key keys/minisign.pub is force-added when published.
+# ---------------------------------------------------------------------------
+*.p12
+*.pfx
+*.pem
+*.key
+*.keystore
+*.jks
+*.p8
+*.cer
+*.crt
+*.pvk
+*.spc
+*.provisionprofile
+*.mobileprovision
+secrets/
+*.secret
+*.secrets
+
+# ---------------------------------------------------------------------------
+# Local tooling / OS cruft.
+# ---------------------------------------------------------------------------
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

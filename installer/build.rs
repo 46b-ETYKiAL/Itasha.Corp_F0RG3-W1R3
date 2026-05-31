@@ -14,14 +14,25 @@ fn main() {
         use embed_manifest::{embed_manifest, manifest::ExecutionLevel, new_manifest};
         // The `elevate` feature (default) embeds requireAdministrator. Build the
         // visual-QA / headless-test binary with --no-default-features.
-        if std::env::var_os("CARGO_CFG_WINDOWS").is_some()
-            && std::env::var_os("CARGO_FEATURE_ELEVATE").is_some()
-        {
+        //
+        // IMPORTANT (headless cargo-test fix): even WITHOUT the elevate feature,
+        // an UNMANIFESTED exe whose name contains "install"/"setup"/"update"
+        // (ours is itasha_installer-*.exe) triggers the Windows Installer
+        // Detection UAC heuristic, forcing elevation — which makes the cargo
+        // test harness fail to launch with os error 740. So when elevate is OFF
+        // we STILL embed a manifest, but at asInvoker level: this suppresses the
+        // heuristic so the headless/test binary runs without elevation. The
+        // production binary (elevate ON) embeds requireAdministrator as before.
+        if std::env::var_os("CARGO_CFG_WINDOWS").is_some() {
+            let level = if std::env::var_os("CARGO_FEATURE_ELEVATE").is_some() {
+                ExecutionLevel::RequireAdministrator
+            } else {
+                ExecutionLevel::AsInvoker
+            };
             embed_manifest(
-                new_manifest("ItashaCorp.Installer")
-                    .requested_execution_level(ExecutionLevel::RequireAdministrator),
+                new_manifest("ItashaCorp.Installer").requested_execution_level(level),
             )
-            .expect("failed to embed elevation manifest");
+            .expect("failed to embed manifest");
         }
     }
 

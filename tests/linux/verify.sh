@@ -29,6 +29,11 @@ ROOT="$(CDPATH='' cd -- "$SCRIPT_DIR/../.." && pwd)"
 APPIMAGE=""
 DEB=""
 DESKTOP="$ROOT/packaging/linux/c0pl4nd.desktop"
+# --dpkg-cycle opts the .deb section into a real install+remove cycle (needs
+# root / a disposable container). Off by default so the lintian-only path still
+# runs on an unprivileged runner. --pubkey overrides the minisign public key.
+DPKG_CYCLE=0
+PUBKEY="$ROOT/keys/minisign.pub"
 while [ $# -gt 0 ]; do
   case "$1" in
     --appimage)
@@ -43,8 +48,16 @@ while [ $# -gt 0 ]; do
       DESKTOP="${2:-}"
       shift 2
       ;;
+    --dpkg-cycle)
+      DPKG_CYCLE=1
+      shift
+      ;;
+    --pubkey)
+      PUBKEY="${2:-}"
+      shift 2
+      ;;
     -h | --help)
-      echo "Usage: $0 [--appimage <file>] [--deb <file>] [--desktop <file>]"
+      echo "Usage: $0 [--appimage <file>] [--deb <file>] [--desktop <file>] [--dpkg-cycle] [--pubkey <key>]"
       exit 0
       ;;
     *)
@@ -86,6 +99,38 @@ if [ -n "$DEB" ] && [ -f "$DEB" ]; then
       FAILED=1
     fi
   fi
+
+  # 2b. Real install + remove cycle (opt-in: --dpkg-cycle, needs root/container).
+  # Asserts the .deb installs cleanly AND removes cleanly with no dpkg error —
+  # the smoke test that the package's maintainer scripts + dependency line work.
+  if [ "$DPKG_CYCLE" -eq 1 ]; then
+    if require_tool dpkg "apt-get install dpkg"; then
+      RAN_SOMETHING=1
+      if [ "$(id -u)" -ne 0 ] && ! command -v sudo >/dev/null 2>&1; then
+        skip "linux-deb-cycle" "--dpkg-cycle needs root or sudo (run in a disposable container); recorded honestly"
+      else
+        _sudo=""
+        [ "$(id -u)" -ne 0 ] && _sudo="sudo"
+        # Resolve the package name from the .deb control metadata.
+        _pkg="$(dpkg-deb -f "$DEB" Package 2>/dev/null || true)"
+        if [ -z "$_pkg" ]; then
+          fail "could not read Package name from $DEB control metadata"
+          FAILED=1
+        elif $_sudo dpkg -i "$DEB" >/dev/null 2>&1 || $_sudo apt-get install -y -f >/dev/null 2>&1; then
+          pass "dpkg -i installed $_pkg from $DEB"
+          if $_sudo dpkg -r "$_pkg" >/dev/null 2>&1; then
+            pass "dpkg -r removed $_pkg cleanly"
+          else
+            fail "dpkg -r failed to remove $_pkg cleanly"
+            FAILED=1
+          fi
+        else
+          fail "dpkg -i failed to install $DEB (even after apt-get -f)"
+          FAILED=1
+        fi
+      fi
+    fi
+  fi
 else
   skip "linux-deb" "no .deb supplied (pass --deb <file>); build one with scripts/build.sh first"
 fi
@@ -111,6 +156,38 @@ if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
 else
   skip "linux-appimage" "no AppImage supplied (pass --appimage <file>)"
 fi
+
+# 4. checksum.sha256 + minisign verification of the Linux artifacts.
+# Delegates to scripts/verify.sh (which checks BOTH the sha256 against the
+# published checksum.sha256 AND the minisign signature against the public key).
+# A present-but-INVALID signature/checksum is a hard FAIL; an absent sidecar is
+# an honest skip (an unsigned dev build is not a failure).
+_verify_artifact() {
+  _art="$1"
+  [ -z "$_art" ] && return 0
+  [ ! -f "$_art" ] && return 0
+  if [ ! -x "$ROOT/scripts/verify.sh" ] && [ ! -f "$ROOT/scripts/verify.sh" ]; then
+    skip "linux-verify-sig" "scripts/verify.sh not found; cannot run checksum/minisign verification"
+    return 0
+  fi
+  RAN_SOMETHING=1
+  # Run verify.sh from the artifact's directory so it finds checksum.sha256 +
+  # the .minisig sidecar next to the file.
+  _dir="$(CDPATH='' cd -- "$(dirname -- "$_art")" && pwd)"
+  _base="$(basename -- "$_art")"
+  if [ -f "$_dir/$_base.minisig" ] || [ -f "$_dir/checksum.sha256" ]; then
+    if (cd "$_dir" && sh "$ROOT/scripts/verify.sh" "$_base" "$PUBKEY"); then
+      pass "checksum + minisign verification on $_base"
+    else
+      fail "checksum/minisign verification FAILED on $_base"
+      FAILED=1
+    fi
+  else
+    skip "linux-verify-sig" "no checksum.sha256 or $_base.minisig beside $_base (unsigned dev build); not faked"
+  fi
+}
+_verify_artifact "$APPIMAGE"
+_verify_artifact "$DEB"
 
 if [ "$RAN_SOMETHING" -eq 0 ]; then
   log "Nothing could be verified (no tools, no artifacts) — recorded as skip."

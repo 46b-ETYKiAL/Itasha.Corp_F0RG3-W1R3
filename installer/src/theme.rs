@@ -153,3 +153,36 @@ pub fn paint_chrome(p: &egui::Painter, rect: Rect, t_seconds: f64) {
     p.rect_stroke(rect, 8.0, Stroke::new(1.5, BEZEL));
     p.rect_stroke(rect.shrink(3.0), 6.0, Stroke::new(1.0, HAIRLINE));
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_parses_rrggbb() {
+        let c = hex("#1A2B3C");
+        assert_eq!((c.r(), c.g(), c.b()), (0x1A, 0x2B, 0x3C));
+    }
+
+    #[test]
+    fn hex_tolerates_no_hash_and_whitespace() {
+        let c = hex("  1a2b3c  ");
+        assert_eq!((c.r(), c.g(), c.b()), (0x1A, 0x2B, 0x3C));
+    }
+
+    #[test]
+    fn hex_falls_back_to_c0pl4nd_violet_on_garbage() {
+        // Invalid input falls back to the documented C0PL4ND violet default.
+        let c = hex("not-a-hex");
+        assert_eq!((c.r(), c.g(), c.b()), (0xB4, 0x8C, 0xE8));
+    }
+
+    #[test]
+    fn dimmed_endpoints_are_identity_and_void() {
+        let src = Color32::from_rgb(0xC8, 0xD6, 0xDC);
+        let at0 = dimmed(src, 0.0);
+        assert_eq!((at0.r(), at0.g(), at0.b()), (src.r(), src.g(), src.b()));
+        let at1 = dimmed(src, 1.0);
+        assert_eq!((at1.r(), at1.g(), at1.b()), (VOID.r(), VOID.g(), VOID.b()));
+    }
+}

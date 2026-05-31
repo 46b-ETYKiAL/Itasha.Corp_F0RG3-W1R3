@@ -1,0 +1,91 @@
+# ============================================================================
+# .gitleaks.toml — secret-hygiene config for the F0RG3-W1R3 installer framework
+# ============================================================================
+# This is a PUBLIC repo. The build pipeline references every signing credential
+# BY NAME from the CI secret store / Keychain / HSM handle — NEVER as a literal.
+# gitleaks is wired as a REQUIRED gate (ci.yml + pre-commit + pre-push) to keep
+# it that way. It runs over both the working tree (`--no-git`) and full history
+# (`detect`); a finding HARD-FAILS the gate (gated-not-faked: we never silence
+# a real leak — we remove the secret).
+#
+# Built on gitleaks' bundled default rules (extend = true) plus org-specific
+# rules for the exact key-shapes this framework's signing scripts reference:
+#   Apple App-Store-Connect API key (.p8), Apple app-specific password,
+#   Windows cert thumbprint context, minisign secret key, PKCS#11 / cloud-HSM
+#   handle URIs. The allowlist below pins the placeholder tokens the templates
+#   and docs legitimately contain so they do not trip the scan.
+# ----------------------------------------------------------------------------
+
+title = "F0RG3-W1R3 secret-hygiene"
+
+# Inherit gitleaks' full bundled ruleset; the [[rules]] below ADD to it.
+[extend]
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# Org-specific rules for the signing-key shapes this framework handles.
+# ---------------------------------------------------------------------------
+
+[[rules]]
+id = "itasha-private-key-block"
+description = "PEM/PKCS private-key block committed to the tree"
+regex = '''-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |PGP )?PRIVATE KEY-----'''
+keywords = ["PRIVATE KEY"]
+
+[[rules]]
+id = "itasha-minisign-secret"
+description = "minisign secret key (untrusted comment header of a .key)"
+regex = '''untrusted comment: minisign (?:encrypted )?secret key'''
+keywords = ["minisign", "secret key"]
+
+[[rules]]
+id = "itasha-apple-app-specific-password"
+description = "Apple app-specific password (xxxx-xxxx-xxxx-xxxx)"
+regex = '''\b[a-z]{4}-[a-z]{4}-[a-z]{4}-[a-z]{4}\b'''
+keywords = ["APPLE_APP_PASSWORD", "app-specific"]
+
+[[rules]]
+id = "itasha-apple-asc-api-key-file"
+description = "Apple App Store Connect API key file contents (.p8 EC key)"
+regex = '''-----BEGIN PRIVATE KEY-----[A-Za-z0-9+/=\s]{100,}-----END PRIVATE KEY-----'''
+keywords = ["BEGIN PRIVATE KEY"]
+
+# ---------------------------------------------------------------------------
+# Allowlist — placeholder tokens the templates/docs legitimately carry, plus
+# the binary/artifact paths that are never source. Regex/path/stopword scoping
+# keeps the gate quiet on intentional template content while remaining strict
+# on real secrets.
+# ---------------------------------------------------------------------------
+[allowlist]
+description = "Template placeholders, docs, and non-source artifact paths"
+
+paths = [
+  # Build outputs / inputs are never committed source (also git-ignored).
+  '''(^|/)(dist|_payload|target|out|build|binaries|inputs)/''',
+  # The public verification key is PUBLIC material by design.
+  '''keys/minisign\.pub$''',
+  # The content-safety auditor and this config describe key-shapes by design.
+  '''tests/content_safety_audit\.py$''',
+  '''\.gitleaks\.toml$''',
+]
+
+regexes = [
+  # CI secret-by-name references (e.g. ${{ secrets.APPLE_APP_PASSWORD }}).
+  '''\$\{\{\s*secrets\.[A-Z0-9_]+\s*\}\}''',
+  # Env-by-name references in scripts (env.X / $env:X / ${X:-}).
+  '''\$\{?env:?[A-Z0-9_]+''',
+  # Template placeholders used across manifests (__VERSION__, ${VERSION}, #{...}).
+  '''__[A-Z0-9_]+__''',
+  '''\$\{[A-Z0-9_]+\}''',
+  '''#\{[a-z0-9_]+\}''',
+  # The literal placeholder strings the templates ship with.
+  '''xxxx-xxxx-xxxx-xxxx''',
+]
+
+stopwords = [
+  "example",
+  "placeholder",
+  "template",
+  "your-",
+  "REPLACE_ME",
+]
