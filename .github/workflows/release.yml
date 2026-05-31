@@ -154,10 +154,12 @@ jobs:
             mkdir -p binaries
             # Per-OS asset glob; the app repo publishes platform binaries on its
             # own release. Download the latest matching asset by handle.
+            # Only the asset glob 'pat' is needed here; the downloaded path is
+            # discovered via 'find' below (so no per-OS 'bin' var — SC2034).
             case "${{ runner.os }}" in
-              Windows) pat="*${APP_NAME}*windows*"; bin="binaries/${APP_NAME}.exe" ;;
-              macOS)   pat="*${APP_NAME}*darwin*,*${APP_NAME}*macos*"; bin="binaries/${APP_NAME}" ;;
-              Linux)   pat="*${APP_NAME}*linux*"; bin="binaries/${APP_NAME}" ;;
+              Windows) pat="*${APP_NAME}*windows*" ;;
+              macOS)   pat="*${APP_NAME}*darwin*,*${APP_NAME}*macos*" ;;
+              Linux)   pat="*${APP_NAME}*linux*" ;;
             esac
             if gh release download --repo "${ITASHA_BINARY_REPO}" --pattern "${pat%%,*}" --dir binaries 2>/dev/null; then
               resolved="$(find binaries -type f | head -n1 || true)"
