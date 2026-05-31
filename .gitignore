@@ -8,6 +8,8 @@
 /binaries
 /inputs
 target/
+# Generated merged cargo-packager config (build.sh output, never source).
+packaging/build/
 
 # ---------------------------------------------------------------------------
 # Secret / signing-key material — NEVER committed to this PUBLIC repo.
