@@ -14,6 +14,8 @@ set -eu
 
 APPIMAGE=""
 NAME="c0pl4nd"
+# Default minisign public key beside the framework (packaging/linux/../../keys).
+PUBKEY="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/../../keys/minisign.pub"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -25,8 +27,12 @@ while [ $# -gt 0 ]; do
       NAME="${2:-}"
       shift 2
       ;;
+    --pubkey)
+      PUBKEY="${2:-}"
+      shift 2
+      ;;
     -h | --help)
-      echo "Usage: $0 --appimage <path.AppImage> [--name <binname>]"
+      echo "Usage: $0 --appimage <path.AppImage> [--name <binname>] [--pubkey <key>]"
       exit 0
       ;;
     *)
@@ -52,6 +58,30 @@ if [ -f "$APPIMAGE.sha256" ]; then
     (cd "$(dirname "$APPIMAGE")" && sha256sum -c "$(basename "$APPIMAGE").sha256")
   else
     echo "WARNING: sha256sum not available; skipping checksum verification." >&2
+  fi
+fi
+
+# --- Optional minisign signature verification (defense beyond the checksum). ---
+# If a detached .minisig sidecar AND a public key are present, verify the
+# signature before installing. A present-but-INVALID signature ABORTS the
+# install (never installs a tampered AppImage). An absent sidecar is an honest
+# skip (unsigned dev build). The public key defaults to keys/minisign.pub
+# beside the framework, overridable with --pubkey.
+if [ -f "$APPIMAGE.minisig" ]; then
+  if command -v minisign >/dev/null 2>&1; then
+    if [ -f "$PUBKEY" ]; then
+      echo "==> Verifying minisign signature"
+      if minisign -Vm "$APPIMAGE" -p "$PUBKEY" >/dev/null 2>&1; then
+        echo "    minisign signature VALID ($PUBKEY)"
+      else
+        echo "ERROR: minisign signature INVALID for $APPIMAGE — refusing to install a file that fails its signature." >&2
+        exit 1
+      fi
+    else
+      echo "WARNING: $APPIMAGE.minisig present but public key $PUBKEY not found; signature NOT verified." >&2
+    fi
+  else
+    echo "WARNING: minisign not installed; signature NOT verified (install from https://jedisct1.github.io/minisign/)." >&2
   fi
 fi
 
