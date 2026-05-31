@@ -126,16 +126,56 @@ jobs:
       # In a real release this step downloads the signed app's release binary
       # (binary-input-contract.md). Here it documents the contract; the build
       # wrapper fails loudly if no binary is supplied.
+      # Binary-input acquisition (G2, binary-input-contract.md source #3).
+      # Resolution priority:
+      #   1. ITASHA_BINARY_PATH already set (local/maintainer path) -> use it.
+      #   2. A per-app source repo is configured (ITASHA_BINARY_REPO repo var,
+      #      e.g. itasha-corp/c0pl4nd) -> `gh release download` the platform
+      #      binary asset from THAT repo by handle into a git-ignored binaries/
+      #      dir, then export ITASHA_BINARY_PATH to it.
+      #   3. Neither -> honest config dry-run (dry_run=1), unchanged fallback.
+      # No binary source URL is ever hardcoded with a secret; the source repo is
+      # a non-secret repo handle and gh uses the job's GITHUB_TOKEN.
       - name: Resolve app binary input
         id: binary
         shell: bash
+        env:
+          # Non-secret repo handle of the app's own repo (e.g. itasha-corp/c0pl4nd).
+          # Empty when unconfigured -> dry-run. Set as a repo/org variable.
+          ITASHA_BINARY_REPO: ${{ vars.ITASHA_BINARY_REPO }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${ITASHA_BINARY_PATH:-}" ]; then
-            echo "::notice::No ITASHA_BINARY_PATH supplied — running config dry-run."
-            echo "dry_run=1" >> "$GITHUB_OUTPUT"
-          else
+          if [ -n "${ITASHA_BINARY_PATH:-}" ] && [ -f "${ITASHA_BINARY_PATH}" ]; then
+            echo "::notice::Using pre-supplied ITASHA_BINARY_PATH (${ITASHA_BINARY_PATH})."
             echo "dry_run=0" >> "$GITHUB_OUTPUT"
+          elif [ -n "${ITASHA_BINARY_REPO:-}" ]; then
+            echo "::notice::Resolving binary from app repo handle '${ITASHA_BINARY_REPO}' (binary-input-contract source #3)."
+            mkdir -p binaries
+            # Per-OS asset glob; the app repo publishes platform binaries on its
+            # own release. Download the latest matching asset by handle.
+            case "${{ runner.os }}" in
+              Windows) pat="*${APP_NAME}*windows*"; bin="binaries/${APP_NAME}.exe" ;;
+              macOS)   pat="*${APP_NAME}*darwin*,*${APP_NAME}*macos*"; bin="binaries/${APP_NAME}" ;;
+              Linux)   pat="*${APP_NAME}*linux*"; bin="binaries/${APP_NAME}" ;;
+            esac
+            if gh release download --repo "${ITASHA_BINARY_REPO}" --pattern "${pat%%,*}" --dir binaries 2>/dev/null; then
+              resolved="$(find binaries -type f | head -n1 || true)"
+              if [ -n "${resolved}" ]; then
+                echo "ITASHA_BINARY_PATH=${GITHUB_WORKSPACE}/${resolved}" >> "$GITHUB_ENV"
+                echo "::notice::Resolved binary input: ${resolved}"
+                echo "dry_run=0" >> "$GITHUB_OUTPUT"
+              else
+                echo "::warning::No matching binary asset downloaded from ${ITASHA_BINARY_REPO} — falling back to config dry-run."
+                echo "dry_run=1" >> "$GITHUB_OUTPUT"
+              fi
+            else
+              echo "::warning::gh release download from ${ITASHA_BINARY_REPO} failed (no release/asset?) — falling back to config dry-run."
+              echo "dry_run=1" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "::notice::No ITASHA_BINARY_PATH and no ITASHA_BINARY_REPO configured — running config dry-run."
+            echo "dry_run=1" >> "$GITHUB_OUTPUT"
           fi
 
       # --- Windows build ---
