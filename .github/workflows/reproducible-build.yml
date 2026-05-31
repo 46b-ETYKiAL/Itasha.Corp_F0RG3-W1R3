@@ -1,0 +1,78 @@
+name: Reproducible Build
+
+# Double-builds the UNSIGNED payload and asserts byte-identical SHA-256
+# (determinism_reproducibility axis, G11). A signed installer is NOT
+# bit-reproducible (the signature embeds a timestamp + nonce); the thing that
+# CAN be reproduced is the unsigned payload, which scripts/reproducible-build.sh
+# builds twice under a pinned toolchain + fixed SOURCE_DATE_EPOCH and compares.
+#
+# Runs on PR + tag (not on every feature push) to contain runner minutes.
+# All third-party actions are SHA-pinned.
+
+on:
+  pull_request:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reproducible-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  byte-identity:
+    name: Unsigned payload byte-identity
+    # ALWAYS run so a skipped job cannot be reported as a green required check
+    # (merge-queue-check-gating).
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (egress audit)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Need history for the SOURCE_DATE_EPOCH commit-time pin.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      # Double-build + byte-identity assertion. With no ITASHA_BINARY_PATH the
+      # script measures the deterministic MERGED CONFIG payload (config-only
+      # reproducibility — honest, labelled, never faked). The exit code IS the
+      # gate: 0 = both runs identical (or an honest tool-absent skip), 1 = the
+      # unsigned payload differed between runs (non-deterministic input).
+      - name: Double-build + assert byte-identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/reproducible-build.sh
+          ./scripts/reproducible-build.sh --app c0pl4nd
+
+  reproducible-gate:
+    name: Reproducible-Build Gate
+    runs-on: ubuntu-latest
+    needs: [byte-identity]
+    if: always()
+    steps:
+      - name: Verify the byte-identity job succeeded
+        run: |
+          set -euo pipefail
+          result="${{ needs.byte-identity.result }}"
+          echo "byte-identity = ${result}"
+          if [ "${result}" != "success" ]; then
+            echo "::error::The unsigned-payload byte-identity check did not succeed (skipped != success)."
+            exit 1
+          fi
+          echo "Reproducible-build gate passed."

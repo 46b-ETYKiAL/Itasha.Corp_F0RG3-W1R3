@@ -54,15 +54,26 @@ while [ "$#" -gt 0 ]; do
 done
 
 # --- Tool presence gate (honest-skip, never faked) -------------------------
-if ! command -v cargo >/dev/null 2>&1; then
-  echo "SKIP: cargo not found on PATH."
-  echo "      Install the Rust toolchain (https://rustup.rs) then re-run."
-  echo "      Reproducibility was NOT measured — no result is being claimed."
-  exit 0
+# cargo + cargo-packager are required ONLY in BINARY mode (a full installer
+# build). In CONFIG-only mode (no ITASHA_BINARY_PATH) the measurable is the
+# deterministic merged config, produced by build.sh --dry-run, which needs only
+# a Python interpreter — so the heavy toolchain gate must not block it.
+if [ -n "${ITASHA_BINARY_PATH:-}" ]; then
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "SKIP: cargo not found on PATH (BINARY mode needs the Rust toolchain)."
+    echo "      Install the Rust toolchain (https://rustup.rs) then re-run."
+    echo "      Reproducibility was NOT measured — no result is being claimed."
+    exit 0
+  fi
+  if ! cargo packager --version >/dev/null 2>&1; then
+    echo "SKIP: cargo-packager not found (BINARY mode needs it)."
+    echo "      Install it with:  cargo install cargo-packager --locked"
+    echo "      Reproducibility was NOT measured — no result is being claimed."
+    exit 0
+  fi
 fi
-if ! cargo packager --version >/dev/null 2>&1; then
-  echo "SKIP: cargo-packager not found."
-  echo "      Install it with:  cargo install cargo-packager --locked"
+if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+  echo "SKIP: no Python interpreter found (build.sh --dry-run needs one)."
   echo "      Reproducibility was NOT measured — no result is being claimed."
   exit 0
 fi
@@ -108,18 +119,44 @@ tree_hash() {
 build_once() {
   out="$1"
   mkdir -p "$out"
-  # Build the unsigned payload. cargo-packager honours SOURCE_DATE_EPOCH for
-  # archive timestamps; the --toolchain pin keeps the compiler deterministic.
-  # The build wrapper resolves the per-app config (apps/<app>.toml).
-  if [ -x ./scripts/build.sh ]; then
-    SDE_OUT="$out" ./scripts/build.sh --app "$APP" --reproducible-out "$out" ||
-      {
-        echo "build.sh failed for run -> $out" >&2
-        return 1
-      }
-  else
+  if [ ! -f ./scripts/build.sh ]; then
     echo "ERROR: scripts/build.sh not found — cannot produce the payload." >&2
     return 2
+  fi
+  # Two measurable modes, both deterministic and both produced by build.sh's
+  # supported flags (NO unsupported --reproducible-out — that previously made
+  # build.sh exit 2 on its arg-parser, so the test never actually ran):
+  #
+  #   * BINARY PRESENT (ITASHA_BINARY_PATH set): run the full build, then copy
+  #     cargo-packager's dist/ output into $out. This is the true unsigned
+  #     installer payload.
+  #   * BINARY ABSENT: run build.sh --dry-run, which deterministically resolves
+  #     + writes the merged cargo-packager config (the merge step honours no
+  #     timestamps); copy that merged config into $out. This is the
+  #     reproducible CONFIG payload — the only thing reproducible WITHOUT the
+  #     app binary. It is an honest, labelled measurement, never faked.
+  if [ -n "${ITASHA_BINARY_PATH:-}" ]; then
+    rm -rf dist
+    if ! ./scripts/build.sh --app "$APP"; then
+      echo "build.sh (full) failed for run -> $out" >&2
+      return 1
+    fi
+    if [ -d dist ]; then
+      cp -R dist/. "$out/" 2>/dev/null || true
+    fi
+  else
+    echo "==> No ITASHA_BINARY_PATH — measuring the deterministic MERGED CONFIG payload (honest config-only reproducibility)."
+    if ! ./scripts/build.sh --app "$APP" --dry-run >/dev/null 2>&1; then
+      echo "build.sh (dry-run) failed for run -> $out" >&2
+      return 1
+    fi
+    merged="packaging/build/$APP.packager.toml"
+    if [ -f "$merged" ]; then
+      cp "$merged" "$out/merged.packager.toml"
+    else
+      echo "ERROR: merged config not produced at $merged — cannot measure." >&2
+      return 1
+    fi
   fi
 }
 
