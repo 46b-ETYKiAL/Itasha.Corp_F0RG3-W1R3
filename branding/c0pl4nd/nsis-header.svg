@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57" role="img" aria-label="C0PL4ND">
+  <title>C0PL4ND installer header</title>
+  <!-- F0RG3-W1R3 per-app installer header (150x57). Compact wired-noir strip:
+       teal squeezed-Times wordmark + prompt-chevron/cursor mark. See INSTALLER-BRANDING.md. -->
+  <defs>
+    <pattern id="hscan" width="3" height="3" patternUnits="userSpaceOnUse">
+      <rect width="3" height="1.5" fill="#f0eef5" opacity="0.04"/>
+    </pattern>
+    <radialGradient id="hglow" cx="74%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="hphos" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="0.9" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="150" height="57" fill="#08060d"/>
+  <rect width="150" height="57" fill="url(#hglow)"/>
+  <rect width="150" height="57" fill="url(#hscan)"/>
+  <line x1="0" y1="55.5" x2="150" y2="55.5" stroke="#00e5ff" stroke-width="1.4" stroke-opacity="0.85"/>
+  <line x1="0" y1="52.5" x2="150" y2="52.5" stroke="#a020ff" stroke-width="0.8" stroke-opacity="0.4"/>
+
+  <!-- wordmark -->
+  <g font-family="'Times New Roman','Liberation Serif',serif" filter="url(#hphos)">
+    <text x="12" y="36" transform="translate(12,0) scale(0.66,1) translate(-12,0)"
+          font-size="26" fill="#00e5ff">copland</text>
+  </g>
+
+  <!-- prompt-chevron + cursor mark (right) -->
+  <g transform="translate(124,25)" filter="url(#hphos)">
+    <circle r="15" fill="none" stroke="#00e5ff" stroke-width="1.6"/>
+    <circle r="17.4" fill="none" stroke="#a020ff" stroke-width="0.8" stroke-opacity="0.5"/>
+    <path d="M-7.5 -5 L-1 0 L-7.5 5" fill="none" stroke="#00e5ff" stroke-width="1.8"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="2" y="-2.5" width="6.5" height="5.5" fill="#00e5ff"/>
+  </g>
+</svg>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57" role="img" aria-label="SCR1B3">
+  <title>SCR1B3 installer header</title>
+  <!-- F0RG3-W1R3 per-app installer header (NSIS MUI_HEADERIMAGE, 150x57).
+       Compact wired-noir strip: void plate, teal squeezed-Times wordmark +
+       caret-in-ring mark, scanlines, teal baseline rule. See INSTALLER-BRANDING.md. -->
+  <defs>
+    <pattern id="hscan" width="3" height="3" patternUnits="userSpaceOnUse">
+      <rect width="3" height="1.5" fill="#f0eef5" opacity="0.04"/>
+    </pattern>
+    <radialGradient id="hglow" cx="74%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="hphos" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="0.9" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="150" height="57" fill="#08060d"/>
+  <rect width="150" height="57" fill="url(#hglow)"/>
+  <rect width="150" height="57" fill="url(#hscan)"/>
+  <line x1="0" y1="55.5" x2="150" y2="55.5" stroke="#00e5ff" stroke-width="1.4" stroke-opacity="0.85"/>
+  <line x1="0" y1="52.5" x2="150" y2="52.5" stroke="#a020ff" stroke-width="0.8" stroke-opacity="0.4"/>
+
+  <!-- wordmark -->
+  <g font-family="'Times New Roman','Liberation Serif',serif" filter="url(#hphos)">
+    <text x="14" y="36" transform="translate(14,0) scale(0.72,1) translate(-14,0)"
+          font-size="27" fill="#00e5ff">scribe</text>
+  </g>
+
+  <!-- caret-in-ring mark (right) -->
+  <g transform="translate(124,25)" filter="url(#hphos)">
+    <circle r="15" fill="none" stroke="#00e5ff" stroke-width="1.6"/>
+    <circle r="17.4" fill="none" stroke="#a020ff" stroke-width="0.8" stroke-opacity="0.5"/>
+    <rect x="-1.8" y="-8" width="3.6" height="16" rx="0.8" fill="#00e5ff"/>
+    <rect x="-7" y="7.5" width="14" height="2" rx="1" fill="#00e5ff"/>
+  </g>
+</svg>
