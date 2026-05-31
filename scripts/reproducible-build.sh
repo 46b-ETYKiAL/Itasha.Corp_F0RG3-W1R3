@@ -146,10 +146,19 @@ build_once() {
     fi
   else
     echo "==> No ITASHA_BINARY_PATH — measuring the deterministic MERGED CONFIG payload (honest config-only reproducibility)."
-    if ! ./scripts/build.sh --app "$APP" --dry-run >/dev/null 2>&1; then
+    # Capture build.sh output so a failure is diagnosable instead of swallowed
+    # (a silent >/dev/null hid the real error here for a long time). The log is
+    # a mktemp file OUTSIDE $out, so it never pollutes the payload hash.
+    build_log="$(mktemp)"
+    if ! ./scripts/build.sh --app "$APP" --dry-run >"$build_log" 2>&1; then
       echo "build.sh (dry-run) failed for run -> $out" >&2
+      echo "----- build.sh output -----" >&2
+      cat "$build_log" >&2
+      echo "---------------------------" >&2
+      rm -f "$build_log"
       return 1
     fi
+    rm -f "$build_log"
     merged="packaging/build/$APP.packager.toml"
     if [ -f "$merged" ]; then
       cp "$merged" "$out/merged.packager.toml"
