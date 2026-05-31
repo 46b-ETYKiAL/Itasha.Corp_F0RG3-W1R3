@@ -1,0 +1,7 @@
+# winget version manifest (template) — Itasha.Corp SCR1B3
+# Schema: https://aka.ms/winget-manifest.version.1.6.0.schema.json
+PackageIdentifier: ItashaCorp.SCR1B3
+PackageVersion: ${VERSION}
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

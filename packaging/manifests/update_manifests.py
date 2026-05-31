@@ -100,57 +100,74 @@ def main(argv: list[str]) -> int:
     win = _find_artifact(release_dir, WINDOWS_SUFFIXES)
     mac = _find_artifact(release_dir, MACOS_SUFFIXES)
 
+    # App-aware discovery: every winget THREE-FILE set in the manifest root is
+    # resolved, not just C0PL4ND. The set is keyed by the version-manifest file
+    # (ItashaCorp.<APP>.yaml has no .installer/.locale infix); its two siblings
+    # are derived by name. Scoop + Homebrew sets are discovered by globbing the
+    # per-PM directories. This makes a new app a non-fork addition (SCR1B3 and
+    # any future app resolve automatically — maintainability axis).
     if win is None:
         print("SKIP winget/scoop: no Windows installer artifact in release dir.")
     else:
         win_sha = _sha256_of(win)
         win_url = _release_url(args.repo, version, win.name)
-        # winget (three templates).
-        for name in (
-            "ItashaCorp.C0PL4ND.installer.yaml",
-            "ItashaCorp.C0PL4ND.locale.en-US.yaml",
-            "ItashaCorp.C0PL4ND.yaml",
-        ):
-            src = mroot / "winget" / name
-            if src.is_file():
+        winget_dir = mroot / "winget"
+        # Version manifests are the files WITHOUT an .installer/.locale infix.
+        version_manifests = sorted(
+            p
+            for p in winget_dir.glob("*.yaml")
+            if ".installer." not in p.name and ".locale." not in p.name
+        )
+        for version_src in version_manifests:
+            stem = version_src.stem  # e.g. ItashaCorp.SCR1B3
+            for name in (
+                f"{stem}.installer.yaml",
+                f"{stem}.locale.en-US.yaml",
+                version_src.name,
+            ):
+                src = winget_dir / name
+                if src.is_file():
+                    _write_resolved(
+                        src,
+                        out / "winget" / name,
+                        {
+                            "${VERSION}": version,
+                            "${INSTALLER_URL}": win_url,
+                            "${INSTALLER_SHA256}": win_sha,
+                        },
+                    )
+        # scoop — every *.json manifest in the scoop dir.
+        scoop_dir = mroot / "scoop"
+        if scoop_dir.is_dir():
+            for scoop_src in sorted(scoop_dir.glob("*.json")):
                 _write_resolved(
-                    src,
-                    out / "winget" / name,
+                    scoop_src,
+                    out / "scoop" / scoop_src.name,
                     {
-                        "${VERSION}": version,
-                        "${INSTALLER_URL}": win_url,
-                        "${INSTALLER_SHA256}": win_sha,
+                        "__VERSION__": version,
+                        "__INSTALLER_URL__": win_url,
+                        "__INSTALLER_SHA256__": win_sha,
                     },
                 )
-        # scoop.
-        scoop_src = mroot / "scoop" / "c0pl4nd.json"
-        if scoop_src.is_file():
-            _write_resolved(
-                scoop_src,
-                out / "scoop" / "c0pl4nd.json",
-                {
-                    "__VERSION__": version,
-                    "__INSTALLER_URL__": win_url,
-                    "__INSTALLER_SHA256__": win_sha,
-                },
-            )
 
     if mac is None:
         print("SKIP homebrew: no macOS .dmg artifact in release dir.")
     else:
         mac_sha = _sha256_of(mac)
         mac_url = _release_url(args.repo, version, mac.name)
-        cask_src = mroot / "homebrew" / "c0pl4nd.rb"
-        if cask_src.is_file():
-            _write_resolved(
-                cask_src,
-                out / "homebrew" / "c0pl4nd.rb",
-                {
-                    "__VERSION__": version,
-                    "__SHA256__": mac_sha,
-                    "__URL__": mac_url,
-                },
-            )
+        homebrew_dir = mroot / "homebrew"
+        # homebrew — every *.rb cask in the homebrew dir.
+        if homebrew_dir.is_dir():
+            for cask_src in sorted(homebrew_dir.glob("*.rb")):
+                _write_resolved(
+                    cask_src,
+                    out / "homebrew" / cask_src.name,
+                    {
+                        "__VERSION__": version,
+                        "__SHA256__": mac_sha,
+                        "__URL__": mac_url,
+                    },
+                )
 
     print("manifest update complete (resolved present platforms; skipped absent ones).")
     return 0
