@@ -77,3 +77,43 @@ A successful verification means the file matches what the project published.
   ($99/yr). Until those credentials are present, the pipeline ships the build
   **unsigned dev-only** with this document as the user-facing explanation — it
   does not pretend to be notarized. See `docs/adr/0003-signing-posture.md`.
+
+### The asserted (load-bearing) verification chain
+
+Apple's guidance is explicit: **"notarization passing is not the same as
+Gatekeeper passing"** — a build can be notarized yet still be rejected by
+Gatekeeper if the ticket is not stapled or the runtime is not hardened. So when
+signing is engaged (the Apple Developer ID credentials are present),
+`sign-notarize-staple.sh` asserts BOTH halves of the chain and a failure
+**hard-fails the build**:
+
+1. `codesign --force --options runtime --timestamp` — sign the `.app` under the
+   **Hardened Runtime** (a notarization prerequisite).
+2. `xcrun notarytool submit … --wait` — submit and wait for the Apple ticket.
+3. `xcrun stapler staple` — attach the ticket to the `.dmg` (offline Gatekeeper).
+4. `xcrun stapler validate` — **load-bearing**: a missing/invalid ticket exits
+   the script non-zero.
+5. `spctl --assess --type open --context context:primary-signature` —
+   **load-bearing**: a Gatekeeper rejection exits the script non-zero.
+
+Steps 4 and 5 were previously suffixed `|| true`, which **swallowed** the
+verdict — a tampered or un-notarized `.dmg` would print a rejection yet the
+script still reported success. That swallow is removed: on the creds-present
+path a failed `stapler validate` or `spctl --assess` now emits `::error::` and
+fails the build. `tests/macos/verify.sh --expect-signed` mirrors this and FAILS
+on a deliberately un-stapled or tampered `.app`/`.dmg`, proving the verdict is
+no longer masked.
+
+The credential-**absent** path is unchanged and honest: with no
+`APPLE_SIGNING_IDENTITY`, the script skips signing, emits a loud `::warning::`,
+ships the build unsigned (+ minisign + cosign-keyless), and **never fakes a
+notarization ticket**. The `release-verify` staple assertion is then
+**skipped-with-a-structured-reason**, not failed.
+
+### Consequence of an unsigned / un-notarized public build
+
+On macOS Sequoia (15) and later there is no Control-click "Open Anyway"
+shortcut, so an un-notarized public build **hard-blocks** on first run and traps
+the user in System Settings > Privacy & Security every launch. That is why a
+public release MUST be notarized + stapled — the asserted chain above is the
+guarantee that a build claiming to be release-ready actually passes Gatekeeper.
