@@ -228,7 +228,9 @@ jobs:
         run: cargo test --manifest-path installer/Cargo.toml --no-default-features --locked
 
       - name: Install cargo-audit (pinned)
-        run: cargo install cargo-audit --version 0.21.2 --locked
+        # 0.22.x ships the CVSS-v4-capable rustsec/cvss crates; 0.21.2 errored
+        # "unsupported CVSS version: 4.0" on RustSec advisories using CVSS:4.0.
+        run: cargo install cargo-audit --version 0.22.1 --locked
 
       - name: cargo-audit (vulnerability scan)
         run: cargo audit --file installer/Cargo.lock
