@@ -117,9 +117,26 @@ echo "==> Stapling the notarization ticket to the .dmg (offline Gatekeeper)"
 # the user's machine). On Sequoia this is what avoids the System-Settings trip.
 xcrun stapler staple "$DMG_PATH"
 
-echo "==> Validating the staple"
-xcrun stapler validate "$DMG_PATH"
-spctl --assess --type open --context context:primary-signature -v "$DMG_PATH" || true
+# --- LOAD-BEARING Gatekeeper verification (ROOT-CAUSE FIX, was `|| true`) -----
+# Apple's guidance: "notarization passing != Gatekeeper passing" — assert BOTH
+# `stapler validate` AND `spctl --assess` under Hardened Runtime. The prior code
+# ended the spctl line with `|| true`, which SWALLOWED a rejecting verdict: a
+# tampered or un-notarized .dmg would print a rejection and the script would
+# still exit 0, falsely reporting success. We reach this point ONLY because
+# APPLE_SIGNING_IDENTITY is present (creds-present, signing was engaged), so the
+# verdict is now load-bearing — a failure HARD-FAILS the script.
+echo "==> Validating the staple (load-bearing)"
+if ! xcrun stapler validate "$DMG_PATH"; then
+  echo "::error::stapler validate FAILED on $DMG_PATH — the notarization ticket is missing or invalid. NOT swallowing this verdict (was previously masked by '|| true')." >&2
+  exit 1
+fi
+
+echo "==> Gatekeeper assessment (load-bearing)"
+if ! spctl --assess --type open --context context:primary-signature -v "$DMG_PATH"; then
+  echo "::error::spctl --assess REJECTED $DMG_PATH — Gatekeeper would block this build despite signing being engaged (tampered/un-notarized payload). NOT swallowing this verdict (was previously masked by '|| true')." >&2
+  exit 1
+fi
+echo "::notice::Gatekeeper verification passed: stapler validate + spctl --assess both accept $DMG_PATH."
 
 # --- Tahoe Icon-wipe handling: re-apply the branded volume icon if requested ---
 # macOS Tahoe (26) wipes a .dmg's custom volume icon (the "Icon\r" resource)

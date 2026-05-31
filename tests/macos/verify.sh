@@ -41,6 +41,14 @@ ICON_CR_NAME="Icon$(printf '\r')"
 APP_PATH=""
 DMG_PATH=""
 EXPECT_VOLICON=0
+# --expect-signed makes the Gatekeeper chain LOAD-BEARING: when set (creds were
+# present and signing was engaged in the build), a failing codesign / spctl /
+# stapler check is a HARD FAILURE (exit 1) rather than an honest unsigned-dev
+# NOTE. This is the test-side mirror of the sign-notarize-staple.sh root-cause
+# fix (dropping the `|| true` swallow). The release-verify workflow passes it on
+# a creds-present signed build; a deliberately un-stapled/tampered .dmg then
+# FAILS, proving the verdict is no longer swallowed.
+EXPECT_SIGNED=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --app)
@@ -55,8 +63,12 @@ while [ $# -gt 0 ]; do
       EXPECT_VOLICON=1
       shift
       ;;
+    --expect-signed)
+      EXPECT_SIGNED=1
+      shift
+      ;;
     -h | --help)
-      echo "Usage: $0 --app <App.app> --dmg <Disk.dmg> [--expect-volicon]"
+      echo "Usage: $0 --app <App.app> --dmg <Disk.dmg> [--expect-volicon] [--expect-signed]"
       exit 0
       ;;
     *)
@@ -82,6 +94,20 @@ fi
 
 FAILED=0
 
+# Under --expect-signed every Gatekeeper check is LOAD-BEARING: a NOTE becomes a
+# hard FAIL. This is what makes a deliberately un-stapled/tampered fixture fail
+# the test (proving the verdict is no longer swallowed). Without the flag the
+# honest unsigned-dev NOTE path is preserved (creds-absent posture, ADR-0003).
+assert_or_note() {
+  # $1 = human label of the failed check (already-failed context)
+  if [ "$EXPECT_SIGNED" -eq 1 ]; then
+    fail "$1 (load-bearing under --expect-signed; signing was expected)"
+    FAILED=1
+  else
+    log "NOTE: $1 — expected for an un-notarized dev build (ADR-0003). NEVER faked."
+  fi
+}
+
 # 1. codesign verification on the .app.
 if codesign --verify --deep --strict --verbose=2 "$APP_PATH" >/dev/null 2>&1; then
   pass "codesign --verify --deep --strict on $APP_PATH"
@@ -91,7 +117,7 @@ else
     fail "codesign verify failed on a SIGNED .app (broken signature)"
     FAILED=1
   else
-    log "NOTE: $APP_PATH is UNSIGNED (dev build). Not a failure — documented dev-unsigned posture (ADR-0003). Gatekeeper will warn on distribution until Developer ID signing is applied."
+    assert_or_note "$APP_PATH is UNSIGNED (dev build); Gatekeeper would warn until Developer ID signing is applied"
   fi
 fi
 
@@ -99,14 +125,14 @@ fi
 if spctl --assess --type install --verbose=2 "$DMG_PATH" >/dev/null 2>&1; then
   pass "spctl --assess accepts $DMG_PATH (Gatekeeper would allow install)"
 else
-  log "NOTE: spctl rejected $DMG_PATH — expected for an un-notarized dev build (ADR-0003). Not faked as accepted."
+  assert_or_note "spctl --assess REJECTED $DMG_PATH (Gatekeeper would block install)"
 fi
 
 # 3. Stapled notarization ticket (offline Gatekeeper pass).
 if stapler validate "$DMG_PATH" >/dev/null 2>&1; then
   pass "stapler validate: notarization ticket stapled to $DMG_PATH (offline OK)"
 else
-  log "NOTE: no stapled ticket on $DMG_PATH — expected for an un-notarized dev build. NEVER faked."
+  assert_or_note "no stapled notarization ticket on $DMG_PATH (Gatekeeper offline-block)"
 fi
 
 # 4. Tahoe custom-volume-icon survival (only when explicitly expected).
