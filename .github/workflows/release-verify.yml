@@ -92,13 +92,18 @@ jobs:
       # reason (never a false pass).
       - name: Assert artifact shape
         shell: bash
+        env:
+          # Route expressions through env (not inlined into the script body) so the
+          # shell never re-parses a GitHub-expansion string — template-injection-safe.
+          DRY_RUN: ${{ steps.build.outputs.dry_run }}
+          RUNNER_OS_NAME: ${{ runner.os }}
         run: |
           set -euo pipefail
-          if [ "${{ steps.build.outputs.dry_run }}" = "1" ]; then
+          if [ "${DRY_RUN}" = "1" ]; then
             echo "::notice::artifact-shape: skipped (dry-run, no binary input) — structured skip, not a pass."
             exit 0
           fi
-          case "${{ runner.os }}" in
+          case "${RUNNER_OS_NAME}" in
             Windows) globs=("dist"/*.exe) ;;        # .msi is gated (WiX toolset)
             macOS)   globs=("dist"/*.dmg) ;;
             Linux)   globs=("dist"/*.AppImage "dist"/*.deb) ;;
@@ -175,9 +180,11 @@ jobs:
     if: always()
     steps:
       - name: Verify the build-and-verify matrix succeeded
+        env:
+          BUILD_RESULT: ${{ needs.build-and-verify.result }}
         run: |
           set -euo pipefail
-          result="${{ needs.build-and-verify.result }}"
+          result="${BUILD_RESULT}"
           echo "build-and-verify = ${result}"
           # A matrix job is 'success' only if every cell succeeded; a failure or
           # cancellation on any OS fails the gate. Skipped != success.
