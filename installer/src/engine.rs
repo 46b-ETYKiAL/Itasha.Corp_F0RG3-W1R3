@@ -101,19 +101,37 @@ fn ps(script: &str) -> Result<(), String> {
 
 fn make_shortcut(lnk: &Path, target: &Path, workdir: &Path) -> Result<(), String> {
     if let Some(p) = lnk.parent() {
-        std::fs::create_dir_all(p).ok();
+        std::fs::create_dir_all(p)
+            .map_err(|e| format!("shortcut dir {:?}: {e}", lnk.parent().unwrap()))?;
     }
+    // `$ErrorActionPreference='Stop'` + try/catch/exit-1 is load-bearing: a
+    // `WScript.Shell` COM failure (e.g. `Save()` denied) is a NON-terminating
+    // error, so a bare `-Command` script would still exit 0 and the installer
+    // would silently report success with no shortcut on disk. The catch turns
+    // any failure into a non-zero exit `ps()` surfaces; the post-Save existence
+    // check below is the second, language-agnostic guard.
     let s = format!(
-        "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut('{}'); \
+        "$ErrorActionPreference='Stop'; try {{ \
+         $w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut('{}'); \
          $s.TargetPath='{}'; $s.WorkingDirectory='{}'; $s.IconLocation='{},0'; \
-         $s.Description='{}'; $s.Save()",
+         $s.Description='{}'; $s.Save() }} \
+         catch {{ Write-Error $_; exit 1 }}",
         lnk.display(),
         target.display(),
         workdir.display(),
         target.display(),
         config::TAGLINE.replace('\'', " "),
     );
-    ps(&s)
+    ps(&s)?;
+    // Verify the .lnk actually materialized — catches any silent COM failure
+    // that still slipped an exit-0 past `ps()`.
+    if !lnk.exists() {
+        return Err(format!(
+            "shortcut was not created at {} (the shell reported success but no .lnk exists)",
+            lnk.display()
+        ));
+    }
+    Ok(())
 }
 
 fn start_menu_dir() -> PathBuf {
