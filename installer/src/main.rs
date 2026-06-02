@@ -233,7 +233,17 @@ impl App {
         ui.add_space(22.0);
         section_label(&mut ui, "NODE CONFIG · integration");
         ui.add_space(6.0);
-        opt_row(&mut ui, &mut self.start_menu, "Start-Menu entry", v);
+        opt_row(&mut ui, &mut self.start_menu, "Add to Start menu (recommended)", v);
+        ui.label(
+            egui::RichText::new(format!(
+                "    creates a \"{}\" shortcut in the Start menu — search \"{}\" or \"Copland\" to launch",
+                config::APP_NAME,
+                config::APP_NAME
+            ))
+            .color(theme::DIM)
+            .small(),
+        );
+        ui.add_space(4.0);
         opt_row(&mut ui, &mut self.desktop, "Desktop shortcut", v);
         opt_row(&mut ui, &mut self.add_path, "Add to system PATH", v);
         opt_row(&mut ui, &mut self.launch, format!("Launch {} on finish", config::APP_NAME), v);

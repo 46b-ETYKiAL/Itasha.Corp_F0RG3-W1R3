@@ -5,6 +5,8 @@
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread::sleep;
+use std::time::Duration;
 
 use crate::config;
 
@@ -99,39 +101,94 @@ fn ps(script: &str) -> Result<(), String> {
     )
 }
 
+/// Run a PowerShell script and SURFACE the real error. Unlike `ps()`, this
+/// CAPTURES stderr (via `.output()`) so a `WScript.Shell` COM failure reports
+/// *what* went wrong rather than a bare exit code. `$ErrorActionPreference='Stop'`
+/// + the caller's try/catch turn non-terminating COM errors into a non-zero exit;
+/// this function turns that exit into a descriptive `Err`, not a silent skip.
+fn ps_checked(script: &str) -> Result<(), String> {
+    let mut c = Command::new("powershell");
+    c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script]);
+    #[cfg(windows)]
+    c.creation_flags(CREATE_NO_WINDOW);
+    match c.output() {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => {
+            let err = String::from_utf8_lossy(&o.stderr);
+            let err = err.trim();
+            if err.is_empty() {
+                Err(format!("powershell exited with {}", o.status))
+            } else {
+                Err(format!("powershell error: {err}"))
+            }
+        }
+        Err(e) => Err(format!("powershell failed to start: {e}")),
+    }
+}
+
+/// Single-quoted PowerShell literal: escape embedded `'` as `''` so a path with
+/// an apostrophe (e.g. a user folder) stays a safe literal and cannot break the
+/// `-Command` script.
+fn ps_lit(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+/// The `.lnk` Description (Windows "Comment" field), indexed by Windows Search.
+/// It MUST carry BOTH the leet wordmark "C0PL4ND" and the phonetic "Copland" so
+/// the Start-menu shortcut surfaces under either spelling — closing the "can't
+/// find it by search" symptom.
+fn shortcut_description() -> String {
+    format!("{} — Copland — {}", config::APP_NAME, config::TAGLINE)
+}
+
+/// The Start-menu `.lnk` path for this app (all-users Programs\<Vendor>\<App>.lnk).
+fn start_menu_lnk() -> PathBuf {
+    start_menu_dir().join(format!("{}.lnk", config::APP_NAME))
+}
+
 fn make_shortcut(lnk: &Path, target: &Path, workdir: &Path) -> Result<(), String> {
+    // The .lnk parent dir MUST exist before WScript.Shell.Save() — CreateShortcut
+    // does not create intermediate dirs and fails (non-terminating) when it is
+    // absent. Propagate the error; never swallow it with `.ok()`.
     if let Some(p) = lnk.parent() {
-        std::fs::create_dir_all(p)
-            .map_err(|e| format!("shortcut dir {:?}: {e}", lnk.parent().unwrap()))?;
+        std::fs::create_dir_all(p).map_err(|e| format!("shortcut dir {p:?}: {e}"))?;
     }
     // `$ErrorActionPreference='Stop'` + try/catch/exit-1 is load-bearing: a
     // `WScript.Shell` COM failure (e.g. `Save()` denied) is a NON-terminating
     // error, so a bare `-Command` script would still exit 0 and the installer
     // would silently report success with no shortcut on disk. The catch turns
-    // any failure into a non-zero exit `ps()` surfaces; the post-Save existence
-    // check below is the second, language-agnostic guard.
+    // any failure into a non-zero exit `ps_checked()` surfaces (with stderr); the
+    // post-Save existence check below is the second, language-agnostic guard.
     let s = format!(
         "$ErrorActionPreference='Stop'; try {{ \
          $w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut('{}'); \
          $s.TargetPath='{}'; $s.WorkingDirectory='{}'; $s.IconLocation='{},0'; \
          $s.Description='{}'; $s.Save() }} \
          catch {{ Write-Error $_; exit 1 }}",
-        lnk.display(),
-        target.display(),
-        workdir.display(),
-        target.display(),
-        config::TAGLINE.replace('\'', " "),
+        ps_lit(&lnk.display().to_string()),
+        ps_lit(&target.display().to_string()),
+        ps_lit(&workdir.display().to_string()),
+        ps_lit(&target.display().to_string()),
+        ps_lit(&shortcut_description()),
     );
-    ps(&s)?;
-    // Verify the .lnk actually materialized — catches any silent COM failure
-    // that still slipped an exit-0 past `ps()`.
-    if !lnk.exists() {
-        return Err(format!(
+    ps_checked(&s)?;
+    // Verify the .lnk actually materialized. A transient AV / filesystem lock can
+    // delay the write past Save() reporting success, so retry briefly before
+    // failing loudly — a shortcut that never landed is a hard failure, not a skip.
+    for attempt in 0..5 {
+        if lnk.is_file() {
+            return Ok(());
+        }
+        sleep(Duration::from_millis(100 * (attempt + 1)));
+    }
+    if lnk.is_file() {
+        Ok(())
+    } else {
+        Err(format!(
             "shortcut was not created at {} (the shell reported success but no .lnk exists)",
             lnk.display()
-        ));
+        ))
     }
-    Ok(())
 }
 
 fn start_menu_dir() -> PathBuf {
@@ -180,7 +237,7 @@ pub fn install(opts: &Opts, payload: &[u8], progress: &dyn Fn(Step)) -> Result<(
 
     if opts.start_menu {
         log(0.80, "link start menu");
-        let lnk = start_menu_dir().join(format!("{}.lnk", config::APP_NAME));
+        let lnk = start_menu_lnk();
         make_shortcut(&lnk, &app_exe, &opts.dir)?;
     }
     if opts.desktop {
@@ -208,7 +265,7 @@ pub fn uninstall() -> Result<(), String> {
     let dir = me.parent().map(Path::to_path_buf).unwrap_or_default();
 
     let _ = run("reg", &["delete", &arp_key(), "/f"]);
-    let sm = start_menu_dir().join(format!("{}.lnk", config::APP_NAME));
+    let sm = start_menu_lnk();
     let _ = std::fs::remove_file(&sm);
     let _ = std::fs::remove_dir(start_menu_dir());
     let _ = std::fs::remove_file(public_desktop().join(format!("{}.lnk", config::APP_NAME)));
@@ -236,4 +293,59 @@ pub fn uninstall() -> Result<(), String> {
         let _ = c.spawn();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ps_lit_escapes_single_quotes() {
+        assert_eq!(ps_lit("plain"), "plain");
+        assert_eq!(ps_lit("it's"), "it''s");
+        assert_eq!(ps_lit(r"C:\Program Files\X"), r"C:\Program Files\X");
+        // A path with an apostrophe (e.g. a user folder) stays a safe literal.
+        assert_eq!(ps_lit(r"C:\Users\O'Brien\app.lnk"), r"C:\Users\O''Brien\app.lnk");
+    }
+
+    #[test]
+    fn shortcut_description_carries_both_spellings() {
+        // Windows Search indexes the .lnk Description. It MUST contain the leet
+        // wordmark AND the phonetic "Copland" so either search term surfaces it.
+        let d = shortcut_description();
+        assert!(
+            d.contains(config::APP_NAME),
+            "description must contain the app name {:?}: {d:?}",
+            config::APP_NAME
+        );
+        assert!(
+            d.contains("Copland"),
+            "description must contain the phonetic 'Copland' for Start search: {d:?}"
+        );
+    }
+
+    #[test]
+    fn start_menu_lnk_is_under_programs_with_app_name() {
+        let lnk = start_menu_lnk();
+        let s = lnk.to_string_lossy();
+        // Lands in the all-users Start-menu Programs tree under the vendor dir,
+        // named "<APP_NAME>.lnk" so the shortcut is where the OS looks for it.
+        assert!(s.contains("Start Menu"), "lnk not under Start Menu: {s}");
+        assert!(s.contains("Programs"), "lnk not under Programs: {s}");
+        assert!(s.contains(config::VENDOR), "lnk not under vendor dir: {s}");
+        assert!(
+            s.ends_with(&format!("{}.lnk", config::APP_NAME)),
+            "lnk not named <APP_NAME>.lnk: {s}"
+        );
+    }
+
+    #[test]
+    fn start_menu_lnk_has_a_parent_to_create() {
+        // make_shortcut creates lnk.parent() before writing. Confirm the path
+        // actually has a parent (a bare relative name would have none).
+        assert!(
+            start_menu_lnk().parent().is_some(),
+            "start-menu .lnk must have a parent dir to create"
+        );
+    }
 }
