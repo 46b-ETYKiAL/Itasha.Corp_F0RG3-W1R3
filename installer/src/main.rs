@@ -57,12 +57,10 @@ impl Default for App {
             phase: Phase::Boot,
             boot_done_at: None,
             dir: default_dir(),
+            // Start-Menu entry ON by default (the expected place to find an app);
+            // Desktop shortcut OFF by default (opt-in to avoid desktop clutter).
             start_menu: true,
-            // Default ON: a desktop shortcut (with the app's embedded icon) is
-            // what most users expect from an installer; the checkbox lets them
-            // opt out. Pairs with the embedded-.exe icon so the shortcut is not
-            // generic.
-            desktop: true,
+            desktop: false,
             add_path: false,
             launch: true,
             frac: 0.0,
