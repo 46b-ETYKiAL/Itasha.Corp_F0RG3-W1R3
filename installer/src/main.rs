@@ -58,7 +58,11 @@ impl Default for App {
             boot_done_at: None,
             dir: default_dir(),
             start_menu: true,
-            desktop: false,
+            // Default ON: a desktop shortcut (with the app's embedded icon) is
+            // what most users expect from an installer; the checkbox lets them
+            // opt out. Pairs with the embedded-.exe icon so the shortcut is not
+            // generic.
+            desktop: true,
             add_path: false,
             launch: true,
             frac: 0.0,
