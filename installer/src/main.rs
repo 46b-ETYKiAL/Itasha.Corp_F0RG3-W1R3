@@ -49,6 +49,12 @@ struct App {
     step_rx: Option<Receiver<engine::Step>>,
     done_rx: Option<Receiver<Result<(), String>>>,
     error: Option<String>,
+    /// `ctx.input(..).time` at the instant we entered `Phase::Online`. Used to
+    /// hold the "NODE ONLINE" frame briefly before the auto-launch fires.
+    online_at: Option<f64>,
+    /// Set once the installed app has been spawned, so auto-launch fires exactly
+    /// once (the `update`/`pump` loop runs every frame).
+    launched: bool,
 }
 
 impl Default for App {
@@ -68,6 +74,8 @@ impl Default for App {
             step_rx: None,
             done_rx: None,
             error: None,
+            online_at: None,
+            launched: false,
         }
     }
 }
@@ -94,6 +102,22 @@ impl App {
         });
     }
 
+    /// Spawn the freshly-installed app (detached) and exit the installer.
+    /// Launches the real installed binary under its install directory — never a
+    /// temp/extract path — and does NOT wait on the child, so the installer never
+    /// holds a handle that could block the app. `spawn()` returns immediately; we
+    /// then exit 0 so the installer process is gone before the app's window paints.
+    fn launch_and_exit(&self) -> ! {
+        let install_dir = PathBuf::from(self.dir.trim());
+        let exe = engine::installed_binary(&install_dir);
+        // Set the working directory to the install dir so the app resolves its
+        // assets relative to where it was actually installed.
+        let _ = std::process::Command::new(&exe)
+            .current_dir(&install_dir)
+            .spawn();
+        std::process::exit(0);
+    }
+
     fn pump(&mut self) {
         if let Some(rx) = &self.step_rx {
             while let Ok(s) = rx.try_recv() {
@@ -110,7 +134,12 @@ impl App {
                     last.1 = true;
                 }
                 match res {
-                    Ok(()) => self.phase = Phase::Online,
+                    Ok(()) => {
+                        self.phase = Phase::Online;
+                        // record the instant we came online; the update loop holds
+                        // the completion frame briefly, then auto-launches if asked.
+                        self.online_at = None;
+                    }
                     Err(e) => {
                         self.error = Some(e);
                         self.phase = Phase::Failed;
@@ -133,6 +162,18 @@ impl eframe::App for App {
         ctx.request_repaint(); // animate
         let t = ctx.input(|i| i.time);
         self.pump();
+
+        // Auto-launch: the moment provisioning completes, if "Launch on finish"
+        // is checked, spawn the installed app and exit WITHOUT requiring a click.
+        // We hold the "NODE ONLINE" frame for a brief beat so the user sees the
+        // completion state, then launch. `launched` guards single-fire.
+        if self.phase == Phase::Online && self.launch && !self.launched {
+            let started = *self.online_at.get_or_insert(t);
+            if t - started >= 0.6 {
+                self.launched = true;
+                self.launch_and_exit();
+            }
+        }
 
         // boot auto-advance
         if self.phase == Phase::Boot {
@@ -376,10 +417,12 @@ impl App {
                 std::process::exit(if failed { 1 } else { 0 });
             }
             if done && self.launch {
+                // When "Launch on finish" is set, the update loop auto-launches
+                // after a brief beat (no click needed). This button is the manual
+                // "launch right now" affordance for that short window.
                 if bui.add(brand_button("LAUNCH  ▸", v)).clicked() {
-                    let exe = engine::installed_binary(&PathBuf::from(self.dir.trim()));
-                    let _ = std::process::Command::new(exe).spawn();
-                    std::process::exit(0);
+                    self.launched = true;
+                    self.launch_and_exit();
                 }
             }
         }
@@ -604,6 +647,14 @@ fn main() -> eframe::Result<()> {
     }
 
     let options = eframe::NativeOptions {
+        // Center the console on the primary monitor's work area at startup.
+        // `centered: true` is eframe's built-in mechanism: it queries the active
+        // monitor size, subtracts the window's inner size, and positions the
+        // window centred — DPI-aware and correct on multi-monitor setups (the
+        // window lands on the primary monitor instead of a corner / off-screen).
+        // Preferred over a hand-computed `ViewportBuilder::with_position`, which
+        // has no reliable monitor-size source at builder time.
+        centered: true,
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([900.0, 560.0])
             .with_min_inner_size([900.0, 560.0])
