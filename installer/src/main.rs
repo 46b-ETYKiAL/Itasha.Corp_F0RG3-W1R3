@@ -49,6 +49,11 @@ struct App {
     step_rx: Option<Receiver<engine::Step>>,
     done_rx: Option<Receiver<Result<(), String>>>,
     error: Option<String>,
+    // Time the install first reached the Online (done) phase, so a "launch on
+    // finish" can auto-fire after a brief beat instead of waiting for a click.
+    online_at: Option<f64>,
+    // Guards the auto-launch so it spawns the app exactly once.
+    launched: bool,
 }
 
 impl Default for App {
@@ -68,8 +73,23 @@ impl Default for App {
             step_rx: None,
             done_rx: None,
             error: None,
+            online_at: None,
+            launched: bool::default(),
         }
     }
+}
+
+/// Launch the freshly-installed app, DE-ELEVATED. The installer self-elevates
+/// (requireAdministrator), so a direct `Command::new(exe).spawn()` would hand
+/// the app the installer's admin token — a privilege the editor must never run
+/// with. Spawning via `explorer.exe <exe>` makes Explorer (which runs at the
+/// normal medium integrity level) be the one that starts the app, so the app
+/// inherits the USER's token, not the installer's. This is the zero-`unsafe`
+/// equivalent of NSIS `ShellExecAsUser` / Inno `runasoriginaluser`.
+fn launch_app(dir: &str) {
+    let exe = engine::installed_binary(&PathBuf::from(dir.trim()));
+    // `explorer.exe <path-to-exe>` opens (launches) the exe de-elevated.
+    let _ = std::process::Command::new("explorer.exe").arg(&exe).spawn();
 }
 
 impl App {
@@ -126,7 +146,12 @@ impl App {
 impl eframe::App for App {
     fn clear_color(&self, _v: &egui::Visuals) -> [f32; 4] {
         let c = theme::VOID;
-        [c.r() as f32 / 255.0, c.g() as f32 / 255.0, c.b() as f32 / 255.0, 1.0]
+        [
+            c.r() as f32 / 255.0,
+            c.g() as f32 / 255.0,
+            c.b() as f32 / 255.0,
+            1.0,
+        ]
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -139,6 +164,19 @@ impl eframe::App for App {
             let start = *self.boot_done_at.get_or_insert(t + 1.8);
             if t >= start {
                 self.phase = Phase::Configure;
+            }
+        }
+
+        // Auto-launch on finish: when the install completes AND "Launch on
+        // finish" is ticked, spawn the app automatically after a ~1.2s beat
+        // (long enough to read the success line) — the user never has to click
+        // the LAUNCH button. The launch is de-elevated via `launch_app`.
+        if self.phase == Phase::Online && self.launch && !self.launched {
+            let at = *self.online_at.get_or_insert(t);
+            if t >= at + 1.2 {
+                self.launched = true;
+                launch_app(&self.dir);
+                std::process::exit(0);
             }
         }
 
@@ -220,8 +258,7 @@ impl App {
             );
             if ui.button("BROWSE").clicked() {
                 if let Some(d) = pick_folder() {
-                    self.dir =
-                        format!(r"{}\{}", d.trim_end_matches('\\'), config::INSTALL_SUBDIR);
+                    self.dir = format!(r"{}\{}", d.trim_end_matches('\\'), config::INSTALL_SUBDIR);
                 }
             }
         });
@@ -235,7 +272,12 @@ impl App {
         ui.add_space(22.0);
         section_label(&mut ui, "NODE CONFIG · integration");
         ui.add_space(6.0);
-        opt_row(&mut ui, &mut self.start_menu, "Add to Start menu (recommended)", v);
+        opt_row(
+            &mut ui,
+            &mut self.start_menu,
+            "Add to Start menu (recommended)",
+            v,
+        );
         ui.label(
             egui::RichText::new(format!(
                 "    creates a \"{}\" shortcut in the Start menu — search \"{}\" or \"Copland\" to launch",
@@ -248,7 +290,12 @@ impl App {
         ui.add_space(4.0);
         opt_row(&mut ui, &mut self.desktop, "Desktop shortcut", v);
         opt_row(&mut ui, &mut self.add_path, "Add to system PATH", v);
-        opt_row(&mut ui, &mut self.launch, format!("Launch {} on finish", config::APP_NAME), v);
+        opt_row(
+            &mut ui,
+            &mut self.launch,
+            format!("Launch {} on finish", config::APP_NAME),
+            v,
+        );
 
         ui.add_space(20.0);
         // signing posture note (honest)
@@ -300,7 +347,10 @@ impl App {
         let sx = x + 2.0;
         let top = rect.top() + 168.0;
         let bot = rect.bottom() - 80.0;
-        p.line_segment([Pos2::new(sx, top), Pos2::new(sx, bot)], Stroke::new(1.0, theme::HAIRLINE));
+        p.line_segment(
+            [Pos2::new(sx, top), Pos2::new(sx, bot)],
+            Stroke::new(1.0, theme::HAIRLINE),
+        );
         let labels = [
             ("VENDOR", config::VENDOR),
             ("VERSION", config::VERSION),
@@ -310,8 +360,20 @@ impl App {
         for (i, (k, val)) in labels.iter().enumerate() {
             let y = top + 14.0 + i as f32 * 30.0;
             p.circle_filled(Pos2::new(sx, y), 2.4, v);
-            p.text(Pos2::new(sx + 14.0, y - 6.0), Align2::LEFT_CENTER, *k, FontId::monospace(9.5), theme::DIM);
-            p.text(Pos2::new(sx + 14.0, y + 7.0), Align2::LEFT_CENTER, *val, FontId::monospace(11.5), theme::TEXT);
+            p.text(
+                Pos2::new(sx + 14.0, y - 6.0),
+                Align2::LEFT_CENTER,
+                *k,
+                FontId::monospace(9.5),
+                theme::DIM,
+            );
+            p.text(
+                Pos2::new(sx + 14.0, y + 7.0),
+                Align2::LEFT_CENTER,
+                *val,
+                FontId::monospace(11.5),
+                theme::TEXT,
+            );
         }
         let _ = split;
     }
@@ -325,9 +387,19 @@ impl App {
         let gauge_c = Pos2::new(rect.left() + rect.width() * 0.24, rect.center().y - 6.0);
         let shown = if done { 1.0 } else { self.frac };
         paint_gauge(p, gauge_c, 78.0, shown, v, t, failed);
-        let big = if failed { "ERR".into() } else { format!("{:.0}%", shown * 100.0) };
+        let big = if failed {
+            "ERR".into()
+        } else {
+            format!("{:.0}%", shown * 100.0)
+        };
         let col = if failed { theme::RED } else { theme::TEXT };
-        p.text(gauge_c, Align2::CENTER_CENTER, big, FontId::monospace(30.0), col);
+        p.text(
+            gauge_c,
+            Align2::CENTER_CENTER,
+            big,
+            FontId::monospace(30.0),
+            col,
+        );
         let state = if done {
             "NODE ONLINE"
         } else if failed {
@@ -351,22 +423,57 @@ impl App {
         p.rect_filled(log_rect, 4.0, theme::PANEL);
         p.rect_stroke(log_rect, 4.0, Stroke::new(1.0, theme::HAIRLINE));
         let mut y = log_rect.top() + 16.0;
-        p.text(Pos2::new(log_rect.left() + 14.0, y), Align2::LEFT_CENTER, "// provisioning log", FontId::monospace(10.0), theme::DIM);
+        p.text(
+            Pos2::new(log_rect.left() + 14.0, y),
+            Align2::LEFT_CENTER,
+            "// provisioning log",
+            FontId::monospace(10.0),
+            theme::DIM,
+        );
         y += 20.0;
-        for (line, ok) in self.log.iter().rev().take(10).collect::<Vec<_>>().iter().rev() {
+        for (line, ok) in self
+            .log
+            .iter()
+            .rev()
+            .take(10)
+            .collect::<Vec<_>>()
+            .iter()
+            .rev()
+        {
             let mark = if *ok { "[OK]" } else { " .. " };
             let mc = if *ok { theme::GREEN } else { theme::MUTED };
-            p.text(Pos2::new(log_rect.left() + 14.0, y), Align2::LEFT_CENTER, format!("> {line}"), FontId::monospace(12.0), theme::TEXT);
-            p.text(Pos2::new(log_rect.right() - 18.0, y), Align2::RIGHT_CENTER, mark, FontId::monospace(12.0), mc);
+            p.text(
+                Pos2::new(log_rect.left() + 14.0, y),
+                Align2::LEFT_CENTER,
+                format!("> {line}"),
+                FontId::monospace(12.0),
+                theme::TEXT,
+            );
+            p.text(
+                Pos2::new(log_rect.right() - 18.0, y),
+                Align2::RIGHT_CENTER,
+                mark,
+                FontId::monospace(12.0),
+                mc,
+            );
             y += 20.0;
         }
         if let Some(err) = &self.error {
-            p.text(Pos2::new(log_rect.left() + 14.0, log_rect.bottom() - 18.0), Align2::LEFT_CENTER, wrap(err, 52), FontId::monospace(11.0), theme::RED);
+            p.text(
+                Pos2::new(log_rect.left() + 14.0, log_rect.bottom() - 18.0),
+                Align2::LEFT_CENTER,
+                wrap(err, 52),
+                FontId::monospace(11.0),
+                theme::RED,
+            );
         }
 
         // finish controls
         if done || failed {
-            let br = Rect::from_min_max(Pos2::new(rect.right() - 320.0, rect.bottom() - 48.0), Pos2::new(rect.right() - 40.0, rect.bottom() - 12.0));
+            let br = Rect::from_min_max(
+                Pos2::new(rect.right() - 320.0, rect.bottom() - 48.0),
+                Pos2::new(rect.right() - 40.0, rect.bottom() - 12.0),
+            );
             let mut bui = ui.new_child(
                 egui::UiBuilder::new()
                     .max_rect(br)
@@ -375,12 +482,13 @@ impl App {
             if bui.add(brand_button("CLOSE", theme::MUTED)).clicked() {
                 std::process::exit(if failed { 1 } else { 0 });
             }
-            if done && self.launch {
-                if bui.add(brand_button("LAUNCH  ▸", v)).clicked() {
-                    let exe = engine::installed_binary(&PathBuf::from(self.dir.trim()));
-                    let _ = std::process::Command::new(exe).spawn();
-                    std::process::exit(0);
-                }
+            // With "Launch on finish" ticked the app auto-launches after a beat
+            // (see update()); this button just lets an impatient user launch
+            // immediately. Same de-elevated path as the auto-launch.
+            if done && self.launch && bui.add(brand_button("LAUNCH NOW  ▸", v)).clicked() {
+                self.launched = true;
+                launch_app(&self.dir);
+                std::process::exit(0);
             }
         }
     }
@@ -408,7 +516,11 @@ fn paint_grid(p: &egui::Painter, rect: Rect, t: f64) {
         let f = (k as f32 + drift) / 12.0;
         let y = vp.y + (base - vp.y) * f * f; // perspective easing
         let a = (18.0 * (1.0 - f)) as u8;
-        p.hline(rect.x_range(), y, Stroke::new(1.0, Color32::from_rgba_unmultiplied(v.r(), v.g(), v.b(), a)));
+        p.hline(
+            rect.x_range(),
+            y,
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(v.r(), v.g(), v.b(), a)),
+        );
     }
 }
 
@@ -456,13 +568,36 @@ fn wordmark(p: &egui::Painter, center: Pos2) {
 fn paint_strip(p: &egui::Painter, rect: Rect) {
     let y = rect.bottom() - 20.0;
     p.hline(rect.x_range(), y - 8.0, Stroke::new(1.0, theme::HAIRLINE));
-    p.text(Pos2::new(rect.left() + 24.0, y), Align2::LEFT_CENTER, "ITASHA.CORP", FontId::monospace(9.5), theme::STRIP);
-    p.text(rect.center_bottom() - Vec2::new(0.0, 12.0), Align2::CENTER_CENTER, format!("{} · present day · present time", config::APP_NAME), FontId::monospace(9.5), theme::STRIP);
-    p.text(Pos2::new(rect.right() - 24.0, y), Align2::RIGHT_CENTER, "F0RG3-W1R3 · CRT-IC v2", FontId::monospace(9.5), theme::STRIP);
+    p.text(
+        Pos2::new(rect.left() + 24.0, y),
+        Align2::LEFT_CENTER,
+        "ITASHA.CORP",
+        FontId::monospace(9.5),
+        theme::STRIP,
+    );
+    p.text(
+        rect.center_bottom() - Vec2::new(0.0, 12.0),
+        Align2::CENTER_CENTER,
+        format!("{} · present day · present time", config::APP_NAME),
+        FontId::monospace(9.5),
+        theme::STRIP,
+    );
+    p.text(
+        Pos2::new(rect.right() - 24.0, y),
+        Align2::RIGHT_CENTER,
+        "F0RG3-W1R3 · CRT-IC v2",
+        FontId::monospace(9.5),
+        theme::STRIP,
+    );
 }
 
 fn section_label(ui: &mut egui::Ui, s: &str) {
-    ui.label(egui::RichText::new(s).color(theme::voice()).monospace().strong());
+    ui.label(
+        egui::RichText::new(s)
+            .color(theme::voice())
+            .monospace()
+            .strong(),
+    );
 }
 
 fn opt_row(ui: &mut egui::Ui, val: &mut bool, label: impl Into<String>, _v: Color32) {
@@ -474,9 +609,13 @@ fn opt_row(ui: &mut egui::Ui, val: &mut bool, label: impl Into<String>, _v: Colo
 }
 
 fn brand_button(text: &str, accent: Color32) -> egui::Button<'static> {
-    egui::Button::new(egui::RichText::new(text.to_string()).color(theme::TEXT).monospace())
-        .stroke(Stroke::new(1.2, accent))
-        .fill(theme::dimmed(accent, 0.82))
+    egui::Button::new(
+        egui::RichText::new(text.to_string())
+            .color(theme::TEXT)
+            .monospace(),
+    )
+    .stroke(Stroke::new(1.2, accent))
+    .fill(theme::dimmed(accent, 0.82))
 }
 
 fn wrap(s: &str, w: usize) -> String {
@@ -604,6 +743,12 @@ fn main() -> eframe::Result<()> {
     }
 
     let options = eframe::NativeOptions {
+        // Center the installer on the primary monitor at launch (it used to
+        // open near the top-left). eframe computes the centred position from the
+        // monitor size before the window is shown, so there is no first-frame
+        // jump; the installer does not persist a window position, so this
+        // centres on every run.
+        centered: true,
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([900.0, 560.0])
             .with_min_inner_size([900.0, 560.0])
