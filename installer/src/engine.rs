@@ -300,6 +300,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn installed_binary_resolves_under_install_dir() {
+        // The auto-launch (and the manual "LAUNCH" button) must spawn the binary
+        // from the *install* directory the user chose — never a temp/extract path.
+        // Confirm installed_binary() simply joins APP_BIN onto that exact dir.
+        let dir = PathBuf::from(r"C:\Program Files\Itasha.Corp\C0PL4ND");
+        let exe = installed_binary(&dir);
+        assert!(
+            exe.starts_with(&dir),
+            "launch target must be under the install dir {dir:?}, got {exe:?}"
+        );
+        assert!(
+            exe.ends_with(config::APP_BIN),
+            "launch target must be the app binary {:?}, got {exe:?}",
+            config::APP_BIN
+        );
+        let tmp = std::env::temp_dir();
+        assert!(
+            !exe.starts_with(&tmp),
+            "launch target must NOT be a temp path: {exe:?}"
+        );
+    }
+
+    #[test]
     fn ps_lit_escapes_single_quotes() {
         assert_eq!(ps_lit("plain"), "plain");
         assert_eq!(ps_lit("it's"), "it''s");
