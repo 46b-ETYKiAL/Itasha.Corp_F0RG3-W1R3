@@ -102,19 +102,30 @@ impl App {
         });
     }
 
-    /// Spawn the freshly-installed app (detached) and exit the installer.
-    /// Launches the real installed binary under its install directory — never a
-    /// temp/extract path — and does NOT wait on the child, so the installer never
-    /// holds a handle that could block the app. `spawn()` returns immediately; we
-    /// then exit 0 so the installer process is gone before the app's window paints.
+    /// Spawn the freshly-installed app (detached, DE-ELEVATED) and exit the
+    /// installer. Launches the real installed binary under its install directory
+    /// — never a temp/extract path.
+    ///
+    /// The installer self-elevates (`requireAdministrator`), so spawning the exe
+    /// directly (`Command::new(exe).spawn()`) would hand the editor the
+    /// installer's ADMIN token — a privilege a local file editor must never run
+    /// with (an admin-token editor is a privilege-escalation foothold and writes
+    /// files as SYSTEM/admin). Launching via `explorer.exe <exe>` makes Explorer,
+    /// which runs at the normal MEDIUM integrity level, be the process that starts
+    /// the app, so the app inherits the USER's token rather than the installer's.
+    /// This is the zero-`unsafe` equivalent of NSIS `ShellExecAsUser` / Inno
+    /// `runasoriginaluser`. (We drop the previous `current_dir(install_dir)` —
+    /// Explorer controls the child's cwd — because the app resolves its config +
+    /// assets from `current_exe()` / `%LOCALAPPDATA%`, not the working directory,
+    /// so de-elevation costs nothing functionally.)
+    ///
+    /// `spawn()` returns immediately (no `wait`), so the installer never holds a
+    /// handle that could block the app; we then exit 0 so the installer process
+    /// is gone before the app's window paints.
     fn launch_and_exit(&self) -> ! {
         let install_dir = PathBuf::from(self.dir.trim());
         let exe = engine::installed_binary(&install_dir);
-        // Set the working directory to the install dir so the app resolves its
-        // assets relative to where it was actually installed.
-        let _ = std::process::Command::new(&exe)
-            .current_dir(&install_dir)
-            .spawn();
+        let _ = std::process::Command::new("explorer.exe").arg(&exe).spawn();
         std::process::exit(0);
     }
 
