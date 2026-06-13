@@ -55,6 +55,18 @@ struct App {
     /// Set once the installed app has been spawned, so auto-launch fires exactly
     /// once (the `update`/`pump` loop runs every frame).
     launched: bool,
+    /// `true` once the window has been explicitly placed (centred) AND revealed.
+    /// The window starts HIDDEN and is positioned + shown on the first frame the
+    /// real monitor geometry is known — see `center_and_reveal`. Builder-time
+    /// placement (`centered: true` / `with_position`) is unreliable on Windows
+    /// multi-monitor / mixed-DPI because the window↔monitor DPI relationship is
+    /// not resolved until after creation (emilk/egui #4918); placing it once the
+    /// viewport reports its monitor size is the correct, DPI-accurate lifecycle.
+    window_placed: bool,
+    /// Frames elapsed waiting for the monitor size to be reported. Bounds the
+    /// hidden window: if the size never arrives we reveal anyway (a possibly
+    /// OS-placed window is always better than one stuck invisible).
+    place_attempts: u32,
 }
 
 impl Default for App {
@@ -76,11 +88,63 @@ impl Default for App {
             error: None,
             online_at: None,
             launched: false,
+            window_placed: false,
+            place_attempts: 0,
         }
     }
 }
 
+/// Centred outer position (top-left, in egui points) for a `win`-sized window
+/// on a `monitor`-sized display. Clamped to ≥ 0 on each axis so a window larger
+/// than the monitor lands at the origin rather than partly off-screen. Pure, so
+/// the placement math is unit-tested without a live window.
+fn centered_outer_position(monitor: egui::Vec2, win: egui::Vec2) -> egui::Pos2 {
+    egui::pos2(
+        ((monitor.x - win.x) * 0.5).max(0.0),
+        ((monitor.y - win.y) * 0.5).max(0.0),
+    )
+}
+
 impl App {
+    /// Place the window centred on its monitor, then reveal it — done ONCE, on
+    /// the first frame the viewport reports a real monitor size. The window is
+    /// created hidden (`with_visible(false)`) so the user never sees an
+    /// off-centre flash: we compute the centred outer position from the monitor
+    /// size and the window's own outer size (both in DPI-correct egui points),
+    /// move the window there, and only then make it visible.
+    ///
+    /// This is the reliable replacement for eframe's builder-time `centered`
+    /// flag, which mis-places the window on Windows multi-monitor / mixed-DPI
+    /// setups because the window↔monitor DPI relationship is not resolved until
+    /// after creation (emilk/egui #4918). It is bounded: if the monitor size is
+    /// never reported within `MAX` frames we reveal the window anyway, so it can
+    /// never be left invisible.
+    fn center_and_reveal(&mut self, ctx: &egui::Context) {
+        if self.window_placed {
+            return;
+        }
+        const MAX_FRAMES: u32 = 30; // ~0.5s at 60 fps; update() repaints each frame
+        self.place_attempts += 1;
+        let monitor = ctx.input(|i| i.viewport().monitor_size);
+        if let Some(monitor) = monitor.filter(|m| m.x > 1.0 && m.y > 1.0) {
+            // Prefer the realised outer size (includes the title bar/borders);
+            // fall back to the fixed inner size before the first outer_rect
+            // report (the window is non-resizable, so this is exact enough).
+            let win = ctx
+                .input(|i| i.viewport().outer_rect)
+                .map(|r| r.size())
+                .unwrap_or_else(|| egui::vec2(900.0, 560.0));
+            let pos = centered_outer_position(monitor, win);
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            self.window_placed = true;
+        } else if self.place_attempts >= MAX_FRAMES {
+            // Monitor size never arrived — reveal anyway; never stay hidden.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            self.window_placed = true;
+        }
+    }
+
     fn start_install(&mut self) {
         let (stx, srx) = mpsc::channel();
         let (dtx, drx) = mpsc::channel();
@@ -170,6 +234,10 @@ impl eframe::App for App {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Place + reveal the window centred on its monitor on the first frame the
+        // monitor geometry is known (the window is created hidden). Reliable on
+        // multi-monitor / mixed-DPI where builder-time centering is not.
+        self.center_and_reveal(ctx);
         ctx.request_repaint(); // animate
         let t = ctx.input(|i| i.time);
         self.pump();
@@ -658,18 +726,18 @@ fn main() -> eframe::Result<()> {
     }
 
     let options = eframe::NativeOptions {
-        // Center the console on the primary monitor's work area at startup.
-        // `centered: true` is eframe's built-in mechanism: it queries the active
-        // monitor size, subtracts the window's inner size, and positions the
-        // window centred — DPI-aware and correct on multi-monitor setups (the
-        // window lands on the primary monitor instead of a corner / off-screen).
-        // Preferred over a hand-computed `ViewportBuilder::with_position`, which
-        // has no reliable monitor-size source at builder time.
-        centered: true,
+        // NOTE: we deliberately do NOT set `centered: true`. eframe's builder-time
+        // centering mis-places the window on Windows multi-monitor / mixed-DPI
+        // setups (the window↔monitor DPI relationship is not resolved until after
+        // creation — emilk/egui #4918), which is exactly the "installer not
+        // centred" report. Instead the window is created HIDDEN and centred +
+        // revealed on the first frame the monitor geometry is known, in
+        // `App::center_and_reveal` — accurate, DPI-correct, and flash-free.
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([900.0, 560.0])
             .with_min_inner_size([900.0, 560.0])
             .with_resizable(false)
+            .with_visible(false) // shown by center_and_reveal once placed
             .with_icon(std::sync::Arc::new(app_icon()))
             .with_title(format!("{} — Itasha.Corp installer", config::APP_NAME)),
         ..Default::default()
@@ -682,4 +750,43 @@ fn main() -> eframe::Result<()> {
             Ok(Box::<App>::default())
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::centered_outer_position;
+    use eframe::egui::{pos2, vec2};
+
+    #[test]
+    fn centers_window_on_monitor() {
+        // 900x560 window on a 1920x1080 monitor → ((1920-900)/2, (1080-560)/2).
+        assert_eq!(
+            centered_outer_position(vec2(1920.0, 1080.0), vec2(900.0, 560.0)),
+            pos2(510.0, 260.0)
+        );
+    }
+
+    #[test]
+    fn centers_on_a_hidpi_monitor() {
+        // A 3840x2160 monitor reported in points after 2x scaling is 1920x1080;
+        // the math is in points so it stays correct regardless of DPI.
+        assert_eq!(
+            centered_outer_position(vec2(2560.0, 1440.0), vec2(900.0, 560.0)),
+            pos2(830.0, 440.0)
+        );
+    }
+
+    #[test]
+    fn clamps_to_origin_when_window_exceeds_monitor() {
+        // Never position partly off-screen: a window wider/taller than the
+        // monitor lands at the origin on the offending axis.
+        assert_eq!(
+            centered_outer_position(vec2(800.0, 600.0), vec2(900.0, 560.0)),
+            pos2(0.0, 20.0)
+        );
+        assert_eq!(
+            centered_outer_position(vec2(700.0, 500.0), vec2(900.0, 560.0)),
+            pos2(0.0, 0.0)
+        );
+    }
 }
