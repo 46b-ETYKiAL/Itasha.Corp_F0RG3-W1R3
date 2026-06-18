@@ -21,6 +21,13 @@ elevate = []
 eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts"] }
 egui = "0.29"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# W1TN3SS opt-in crash/error/issue reporting SDK (first-party, pinned git tag;
+# default-OFF, consent-gated). The installer implements NO SDK behaviour — the
+# config model, sanitizer, spool, transport, preview + consent gate, and the
+# manual issue-form intake all live in the SDK and are CALLED from
+# `src/reporting.rs` + `src/issue_intake.rs`. Pinned to an exact tag so an SDK
+# change can never break the installer until it bumps.
+itasha-report-core = { git = "https://github.com/46b-ETYKiAL/Itasha.Corp_S4F3-W1TN3SS.git", tag = "itasha-report-core-v0.2.0" }
 
 [build-dependencies]
 embed-manifest = "1.4"
