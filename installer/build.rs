@@ -29,10 +29,8 @@ fn main() {
             } else {
                 ExecutionLevel::AsInvoker
             };
-            embed_manifest(
-                new_manifest("ItashaCorp.Installer").requested_execution_level(level),
-            )
-            .expect("failed to embed manifest");
+            embed_manifest(new_manifest("ItashaCorp.Installer").requested_execution_level(level))
+                .expect("failed to embed manifest");
         }
     }
 
@@ -58,10 +56,7 @@ fn main() {
         env_or("ITASHA_VERSION", "0.0.0"),
         env_or("ITASHA_PUBLISHER", "Itasha.Corp"),
         env_or("ITASHA_HOMEPAGE", "https://github.com/itasha-corp/c0pl4nd"),
-        env_or(
-            "ITASHA_TAGLINE",
-            "The operator's shell into the wired.",
-        ),
+        env_or("ITASHA_TAGLINE", "The operator's shell into the wired.",),
         env_or("ITASHA_KANJI", "端末"),
         // Per-app voice color (the banner/brand accent). C0PL4ND violet by default.
         env_or("ITASHA_VOICE_HEX", "#B48CE8"),
