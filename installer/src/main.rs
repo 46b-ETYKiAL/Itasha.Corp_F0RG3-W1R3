@@ -6,6 +6,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod engine;
+mod issue_intake;
+mod panic_hook;
+mod reporting;
 mod theme;
 
 mod config {
@@ -67,6 +70,18 @@ struct App {
     /// hidden window: if the size never arrives we reveal anyway (a possibly
     /// OS-placed window is always better than one stuck invisible).
     place_attempts: u32,
+    /// W1TN3SS manual "Report an issue" dialog state. Default-inert (closed,
+    /// diagnostics OFF). Opened from the failure screen's "Report an issue"
+    /// button, pre-filled with the install error so the user can file it.
+    issue: issue_intake::IssueIntakeState,
+    /// W1TN3SS crash-consent drain state. On launch the host loads any crash
+    /// reports spooled by a PRIOR crashed installer run; if any exist, a consent
+    /// dialog offers an editable preview + equal-weight Send / Don't-send. This
+    /// is the live entry point for the consent-gated SEND path. Default-inert
+    /// (no bound dir => no spool I/O).
+    crash_consent: reporting::CrashConsentState,
+    /// Whether the crash-consent spool has been loaded this launch (load once).
+    crash_consent_loaded: bool,
 }
 
 impl Default for App {
@@ -90,6 +105,9 @@ impl Default for App {
             launched: false,
             window_placed: false,
             place_attempts: 0,
+            issue: issue_intake::IssueIntakeState::default(),
+            crash_consent: reporting::CrashConsentState::default(),
+            crash_consent_loaded: false,
         }
     }
 }
@@ -230,7 +248,12 @@ impl App {
 impl eframe::App for App {
     fn clear_color(&self, _v: &egui::Visuals) -> [f32; 4] {
         let c = theme::VOID;
-        [c.r() as f32 / 255.0, c.g() as f32 / 255.0, c.b() as f32 / 255.0, 1.0]
+        [
+            c.r() as f32 / 255.0,
+            c.g() as f32 / 255.0,
+            c.b() as f32 / 255.0,
+            1.0,
+        ]
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -241,6 +264,15 @@ impl eframe::App for App {
         ctx.request_repaint(); // animate
         let t = ctx.input(|i| i.time);
         self.pump();
+
+        // W1TN3SS: on the first frame, load any crash reports a PRIOR installer
+        // run spooled. If any are pending, the consent dialog (below) offers the
+        // user an editable preview + equal-weight Send / Don't-send. Load once.
+        if !self.crash_consent_loaded {
+            self.crash_consent_loaded = true;
+            self.crash_consent.set_data_dir(reporting::data_dir());
+            let _ = self.crash_consent.load_from_spool();
+        }
 
         // Auto-launch: the moment provisioning completes, if "Launch on finish"
         // is checked, spawn the installed app and exit WITHOUT requiring a click.
@@ -279,6 +311,14 @@ impl eframe::App for App {
                     }
                 }
             });
+
+        // The W1TN3SS crash-consent dialog (opt-in, previewable). Shown only
+        // when a prior run spooled a crash report awaiting the user's consent.
+        self.crash_consent_dialog(ctx);
+
+        // The W1TN3SS manual "Report an issue" modal (opt-in, previewable). Shown
+        // only when the user opened it from the failure screen.
+        self.report_issue_modal(ctx);
     }
 }
 
@@ -340,8 +380,7 @@ impl App {
             );
             if ui.button("BROWSE").clicked() {
                 if let Some(d) = pick_folder() {
-                    self.dir =
-                        format!(r"{}\{}", d.trim_end_matches('\\'), config::INSTALL_SUBDIR);
+                    self.dir = format!(r"{}\{}", d.trim_end_matches('\\'), config::INSTALL_SUBDIR);
                 }
             }
         });
@@ -355,7 +394,12 @@ impl App {
         ui.add_space(22.0);
         section_label(&mut ui, "NODE CONFIG · integration");
         ui.add_space(6.0);
-        opt_row(&mut ui, &mut self.start_menu, "Add to Start menu (recommended)", v);
+        opt_row(
+            &mut ui,
+            &mut self.start_menu,
+            "Add to Start menu (recommended)",
+            v,
+        );
         ui.label(
             egui::RichText::new(format!(
                 "    creates a \"{}\" shortcut in the Start menu — search \"{}\" or \"Copland\" to launch",
@@ -368,7 +412,12 @@ impl App {
         ui.add_space(4.0);
         opt_row(&mut ui, &mut self.desktop, "Desktop shortcut", v);
         opt_row(&mut ui, &mut self.add_path, "Add to system PATH", v);
-        opt_row(&mut ui, &mut self.launch, format!("Launch {} on finish", config::APP_NAME), v);
+        opt_row(
+            &mut ui,
+            &mut self.launch,
+            format!("Launch {} on finish", config::APP_NAME),
+            v,
+        );
 
         ui.add_space(20.0);
         // signing posture note (honest)
@@ -420,7 +469,10 @@ impl App {
         let sx = x + 2.0;
         let top = rect.top() + 168.0;
         let bot = rect.bottom() - 80.0;
-        p.line_segment([Pos2::new(sx, top), Pos2::new(sx, bot)], Stroke::new(1.0, theme::HAIRLINE));
+        p.line_segment(
+            [Pos2::new(sx, top), Pos2::new(sx, bot)],
+            Stroke::new(1.0, theme::HAIRLINE),
+        );
         let labels = [
             ("VENDOR", config::VENDOR),
             ("VERSION", config::VERSION),
@@ -430,8 +482,20 @@ impl App {
         for (i, (k, val)) in labels.iter().enumerate() {
             let y = top + 14.0 + i as f32 * 30.0;
             p.circle_filled(Pos2::new(sx, y), 2.4, v);
-            p.text(Pos2::new(sx + 14.0, y - 6.0), Align2::LEFT_CENTER, *k, FontId::monospace(9.5), theme::DIM);
-            p.text(Pos2::new(sx + 14.0, y + 7.0), Align2::LEFT_CENTER, *val, FontId::monospace(11.5), theme::TEXT);
+            p.text(
+                Pos2::new(sx + 14.0, y - 6.0),
+                Align2::LEFT_CENTER,
+                *k,
+                FontId::monospace(9.5),
+                theme::DIM,
+            );
+            p.text(
+                Pos2::new(sx + 14.0, y + 7.0),
+                Align2::LEFT_CENTER,
+                *val,
+                FontId::monospace(11.5),
+                theme::TEXT,
+            );
         }
         let _ = split;
     }
@@ -445,9 +509,19 @@ impl App {
         let gauge_c = Pos2::new(rect.left() + rect.width() * 0.24, rect.center().y - 6.0);
         let shown = if done { 1.0 } else { self.frac };
         paint_gauge(p, gauge_c, 78.0, shown, v, t, failed);
-        let big = if failed { "ERR".into() } else { format!("{:.0}%", shown * 100.0) };
+        let big = if failed {
+            "ERR".into()
+        } else {
+            format!("{:.0}%", shown * 100.0)
+        };
         let col = if failed { theme::RED } else { theme::TEXT };
-        p.text(gauge_c, Align2::CENTER_CENTER, big, FontId::monospace(30.0), col);
+        p.text(
+            gauge_c,
+            Align2::CENTER_CENTER,
+            big,
+            FontId::monospace(30.0),
+            col,
+        );
         let state = if done {
             "NODE ONLINE"
         } else if failed {
@@ -471,22 +545,57 @@ impl App {
         p.rect_filled(log_rect, 4.0, theme::PANEL);
         p.rect_stroke(log_rect, 4.0, Stroke::new(1.0, theme::HAIRLINE));
         let mut y = log_rect.top() + 16.0;
-        p.text(Pos2::new(log_rect.left() + 14.0, y), Align2::LEFT_CENTER, "// provisioning log", FontId::monospace(10.0), theme::DIM);
+        p.text(
+            Pos2::new(log_rect.left() + 14.0, y),
+            Align2::LEFT_CENTER,
+            "// provisioning log",
+            FontId::monospace(10.0),
+            theme::DIM,
+        );
         y += 20.0;
-        for (line, ok) in self.log.iter().rev().take(10).collect::<Vec<_>>().iter().rev() {
+        for (line, ok) in self
+            .log
+            .iter()
+            .rev()
+            .take(10)
+            .collect::<Vec<_>>()
+            .iter()
+            .rev()
+        {
             let mark = if *ok { "[OK]" } else { " .. " };
             let mc = if *ok { theme::GREEN } else { theme::MUTED };
-            p.text(Pos2::new(log_rect.left() + 14.0, y), Align2::LEFT_CENTER, format!("> {line}"), FontId::monospace(12.0), theme::TEXT);
-            p.text(Pos2::new(log_rect.right() - 18.0, y), Align2::RIGHT_CENTER, mark, FontId::monospace(12.0), mc);
+            p.text(
+                Pos2::new(log_rect.left() + 14.0, y),
+                Align2::LEFT_CENTER,
+                format!("> {line}"),
+                FontId::monospace(12.0),
+                theme::TEXT,
+            );
+            p.text(
+                Pos2::new(log_rect.right() - 18.0, y),
+                Align2::RIGHT_CENTER,
+                mark,
+                FontId::monospace(12.0),
+                mc,
+            );
             y += 20.0;
         }
         if let Some(err) = &self.error {
-            p.text(Pos2::new(log_rect.left() + 14.0, log_rect.bottom() - 18.0), Align2::LEFT_CENTER, wrap(err, 52), FontId::monospace(11.0), theme::RED);
+            p.text(
+                Pos2::new(log_rect.left() + 14.0, log_rect.bottom() - 18.0),
+                Align2::LEFT_CENTER,
+                wrap(err, 52),
+                FontId::monospace(11.0),
+                theme::RED,
+            );
         }
 
         // finish controls
         if done || failed {
-            let br = Rect::from_min_max(Pos2::new(rect.right() - 320.0, rect.bottom() - 48.0), Pos2::new(rect.right() - 40.0, rect.bottom() - 12.0));
+            let br = Rect::from_min_max(
+                Pos2::new(rect.right() - 320.0, rect.bottom() - 48.0),
+                Pos2::new(rect.right() - 40.0, rect.bottom() - 12.0),
+            );
             let mut bui = ui.new_child(
                 egui::UiBuilder::new()
                     .max_rect(br)
@@ -494,6 +603,13 @@ impl App {
             );
             if bui.add(brand_button("CLOSE", theme::MUTED)).clicked() {
                 std::process::exit(if failed { 1 } else { 0 });
+            }
+            // On failure, offer a user-initiated "Report an issue" affordance —
+            // opt-in, previewable, pre-filled with the install error. This is the
+            // live entry point that wires the W1TN3SS manual-intake seam.
+            if failed && bui.add(brand_button("REPORT ISSUE", v)).clicked() {
+                let err = self.error.clone().unwrap_or_default();
+                self.issue.open_from_failure(&err);
             }
             if done && self.launch {
                 // When "Launch on finish" is set, the update loop auto-launches
@@ -505,6 +621,196 @@ impl App {
                 }
             }
         }
+    }
+
+    /// The W1TN3SS crash-consent dialog — shown when a PRIOR installer run
+    /// spooled a crash report. Presents an editable preview + equal-weight Send /
+    /// Don't-send. Nothing transmits until the user presses Send (which mints a
+    /// consent token); Don't-send discards the spooled file. This is the live
+    /// entry point for the consent-gated SEND path.
+    fn crash_consent_dialog(&mut self, ctx: &egui::Context) {
+        if !self.crash_consent.has_pending() {
+            return;
+        }
+        let v = theme::voice();
+        egui::Window::new("A previous run crashed")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
+            .default_width(520.0)
+            .show(ctx, |ui| {
+                ui.label(
+                    egui::RichText::new(
+                        "A crash report from a previous run is ready. It is only sent if you \
+                         choose Send — you can edit or redact it first. Nothing has left your \
+                         machine.",
+                    )
+                    .color(theme::MUTED)
+                    .small(),
+                );
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new("Report (editable)")
+                        .color(theme::DIM)
+                        .small(),
+                );
+                ui.add(
+                    egui::TextEdit::multiline(self.crash_consent.edited_text_mut())
+                        .desired_rows(8)
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace),
+                );
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    // Equal-weight Send / Don't-send (no dark-pattern asymmetry).
+                    if ui.add(brand_button("SEND", v)).clicked() {
+                        if let Some(outcome) = self.crash_consent.consent_and_send() {
+                            let _ = outcome; // logged inside send_report
+                        }
+                    }
+                    if ui.add(brand_button("DON'T SEND", theme::MUTED)).clicked() {
+                        self.crash_consent.decline_and_discard();
+                    }
+                });
+            });
+    }
+
+    /// The W1TN3SS manual "Report an issue" modal — opt-in, previewable, no
+    /// persistent identifier. Renders only when `self.issue.open`. The user picks
+    /// a kind, edits the (pre-filled) description, optionally ticks the
+    /// non-identifying diagnostics block, then chooses Open (browser deep link),
+    /// Copy (manual paste fallback), or Email (`mailto:`). Nothing is sent until
+    /// the user presses one of those — there is no background or default-on path.
+    fn report_issue_modal(&mut self, ctx: &egui::Context) {
+        if !self.issue.open {
+            return;
+        }
+        let v = theme::voice();
+        let mut open = self.issue.open;
+        egui::Window::new("Report an issue")
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
+            .default_width(520.0)
+            .show(ctx, |ui| {
+                ui.label(
+                    egui::RichText::new(
+                        "Send a report only if you choose to. Nothing leaves your machine \
+                         until you press Open, Copy, or Email below.",
+                    )
+                    .color(theme::MUTED)
+                    .small(),
+                );
+                ui.add_space(8.0);
+
+                // Kind selector.
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Kind").color(theme::DIM).small());
+                    for kind in issue_intake::IssueKind::ALL {
+                        ui.selectable_value(&mut self.issue.kind, kind, kind.display());
+                    }
+                });
+                ui.add_space(6.0);
+
+                // Editable description (pre-filled from the install failure).
+                ui.label(egui::RichText::new("Description").color(theme::DIM).small());
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.issue.description)
+                        .desired_rows(6)
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace),
+                );
+                ui.add_space(4.0);
+
+                // Opt-in, non-identifying diagnostics — OFF by default.
+                ui.checkbox(
+                    &mut self.issue.include_diagnostics,
+                    "Include non-identifying diagnostics (app version, OS, arch)",
+                );
+                ui.add_space(6.0);
+
+                // The exact body that will be sent — the transparency primitive.
+                egui::CollapsingHeader::new("Preview what will be sent")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        let preview = self.issue.preview_body();
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(preview).monospace().color(theme::TEXT),
+                            )
+                            .wrap(),
+                        );
+                    });
+                ui.add_space(8.0);
+
+                // If the report is too long for a GitHub deep link (HTTP-414),
+                // tell the user up front that "Open" will fall back to a copy.
+                if !self.issue.fits_url_length(issue_intake::ISSUE_REPO) {
+                    ui.label(
+                        egui::RichText::new(
+                            "This report is long — \"Open in browser\" will copy it to your \
+                             clipboard to paste into a new issue instead.",
+                        )
+                        .color(theme::AMBER)
+                        .small(),
+                    );
+                    ui.add_space(4.0);
+                }
+
+                ui.horizontal(|ui| {
+                    if ui.add(brand_button("OPEN IN BROWSER", v)).clicked() {
+                        let req = self.issue.request(issue_intake::ISSUE_REPO);
+                        let outcome = match issue_intake::open_or_copy(&req) {
+                            issue_intake::IntakeAction::Opened(o) => o,
+                            issue_intake::IntakeAction::CopyToClipboard(body) => {
+                                ctx.copy_text(body);
+                                issue_intake::IntakeOutcome::CopiedToClipboard
+                            }
+                        };
+                        issue_intake::log_outcome(&outcome);
+                        self.issue.last_outcome = Some(outcome);
+                    }
+                    if ui.add(brand_button("COPY", theme::MUTED)).clicked() {
+                        let req = self.issue.request(issue_intake::ISSUE_REPO);
+                        let body = req.to_url();
+                        ctx.copy_text(body);
+                        let outcome = issue_intake::IntakeOutcome::CopiedToClipboard;
+                        issue_intake::log_outcome(&outcome);
+                        self.issue.last_outcome = Some(outcome);
+                    }
+                    if ui.add(brand_button("EMAIL", theme::MUTED)).clicked() {
+                        let req = self.issue.request(issue_intake::ISSUE_REPO);
+                        let outcome = issue_intake::open_mailto(
+                            issue_intake::MAILTO_ALIAS,
+                            &req.title,
+                            &req.body,
+                        );
+                        issue_intake::log_outcome(&outcome);
+                        self.issue.last_outcome = Some(outcome);
+                    }
+                });
+
+                if let Some(outcome) = &self.issue.last_outcome {
+                    ui.add_space(6.0);
+                    let msg = match outcome {
+                        issue_intake::IntakeOutcome::OpenedDeepLink => {
+                            "Opened the prefilled issue form in your browser."
+                        }
+                        issue_intake::IntakeOutcome::CopiedToClipboard => {
+                            "Copied to your clipboard — paste it into a new GitHub issue or email."
+                        }
+                        issue_intake::IntakeOutcome::OpenedMailto => {
+                            "Opened your mail client with the report."
+                        }
+                        issue_intake::IntakeOutcome::Failed(_) => {
+                            "Could not open — use Copy and paste it manually."
+                        }
+                    };
+                    ui.label(egui::RichText::new(msg).color(theme::GREEN).small());
+                }
+            });
+        self.issue.open = open;
     }
 }
 
@@ -530,7 +836,11 @@ fn paint_grid(p: &egui::Painter, rect: Rect, t: f64) {
         let f = (k as f32 + drift) / 12.0;
         let y = vp.y + (base - vp.y) * f * f; // perspective easing
         let a = (18.0 * (1.0 - f)) as u8;
-        p.hline(rect.x_range(), y, Stroke::new(1.0, Color32::from_rgba_unmultiplied(v.r(), v.g(), v.b(), a)));
+        p.hline(
+            rect.x_range(),
+            y,
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(v.r(), v.g(), v.b(), a)),
+        );
     }
 }
 
@@ -578,13 +888,36 @@ fn wordmark(p: &egui::Painter, center: Pos2) {
 fn paint_strip(p: &egui::Painter, rect: Rect) {
     let y = rect.bottom() - 20.0;
     p.hline(rect.x_range(), y - 8.0, Stroke::new(1.0, theme::HAIRLINE));
-    p.text(Pos2::new(rect.left() + 24.0, y), Align2::LEFT_CENTER, "ITASHA.CORP", FontId::monospace(9.5), theme::STRIP);
-    p.text(rect.center_bottom() - Vec2::new(0.0, 12.0), Align2::CENTER_CENTER, format!("{} · present day · present time", config::APP_NAME), FontId::monospace(9.5), theme::STRIP);
-    p.text(Pos2::new(rect.right() - 24.0, y), Align2::RIGHT_CENTER, "F0RG3-W1R3 · CRT-IC v2", FontId::monospace(9.5), theme::STRIP);
+    p.text(
+        Pos2::new(rect.left() + 24.0, y),
+        Align2::LEFT_CENTER,
+        "ITASHA.CORP",
+        FontId::monospace(9.5),
+        theme::STRIP,
+    );
+    p.text(
+        rect.center_bottom() - Vec2::new(0.0, 12.0),
+        Align2::CENTER_CENTER,
+        format!("{} · present day · present time", config::APP_NAME),
+        FontId::monospace(9.5),
+        theme::STRIP,
+    );
+    p.text(
+        Pos2::new(rect.right() - 24.0, y),
+        Align2::RIGHT_CENTER,
+        "F0RG3-W1R3 · CRT-IC v2",
+        FontId::monospace(9.5),
+        theme::STRIP,
+    );
 }
 
 fn section_label(ui: &mut egui::Ui, s: &str) {
-    ui.label(egui::RichText::new(s).color(theme::voice()).monospace().strong());
+    ui.label(
+        egui::RichText::new(s)
+            .color(theme::voice())
+            .monospace()
+            .strong(),
+    );
 }
 
 fn opt_row(ui: &mut egui::Ui, val: &mut bool, label: impl Into<String>, _v: Color32) {
@@ -596,9 +929,13 @@ fn opt_row(ui: &mut egui::Ui, val: &mut bool, label: impl Into<String>, _v: Colo
 }
 
 fn brand_button(text: &str, accent: Color32) -> egui::Button<'static> {
-    egui::Button::new(egui::RichText::new(text.to_string()).color(theme::TEXT).monospace())
-        .stroke(Stroke::new(1.2, accent))
-        .fill(theme::dimmed(accent, 0.82))
+    egui::Button::new(
+        egui::RichText::new(text.to_string())
+            .color(theme::TEXT)
+            .monospace(),
+    )
+    .stroke(Stroke::new(1.2, accent))
+    .fill(theme::dimmed(accent, 0.82))
 }
 
 fn wrap(s: &str, w: usize) -> String {
@@ -716,6 +1053,11 @@ fn app_icon() -> egui::IconData {
 }
 
 fn main() -> eframe::Result<()> {
+    // W1TN3SS Tier-1: install the opt-in crash-capture panic hook early, before
+    // any window or worker thread exists. It only SPOOLS (local-first,
+    // default-OFF, consent-gated) — it transmits nothing.
+    panic_hook::install();
+
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--uninstall") {
         let _ = engine::uninstall();
