@@ -78,7 +78,10 @@ pub fn apply(ctx: &egui::Context) {
     style.text_styles = [
         (TextStyle::Heading, FontId::new(26.0, FontFamily::Monospace)),
         (TextStyle::Body, FontId::new(14.0, FontFamily::Monospace)),
-        (TextStyle::Monospace, FontId::new(13.5, FontFamily::Monospace)),
+        (
+            TextStyle::Monospace,
+            FontId::new(13.5, FontFamily::Monospace),
+        ),
         (TextStyle::Button, FontId::new(14.0, FontFamily::Monospace)),
         (TextStyle::Small, FontId::new(11.0, FontFamily::Monospace)),
     ]
@@ -116,7 +119,10 @@ pub fn paint_chrome(p: &egui::Painter, rect: Rect, t_seconds: f64) {
         edge,
     );
     p.rect_filled(
-        Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - b), rect.right_bottom()),
+        Rect::from_min_max(
+            Pos2::new(rect.left(), rect.bottom() - b),
+            rect.right_bottom(),
+        ),
         0.0,
         edge,
     );
@@ -147,7 +153,11 @@ pub fn paint_chrome(p: &egui::Painter, rect: Rect, t_seconds: f64) {
     let ret = Pos2::new(rect.left() + 40.0, rect.bottom() - 40.0);
     let pulse = 0.5 + 0.5 * ((t_seconds * 1.6).sin() as f32);
     p.circle_stroke(ret, 6.0, Stroke::new(1.0, dimmed(v, 0.2)));
-    p.circle_filled(ret, 1.6, Color32::from_rgba_unmultiplied(v.r(), v.g(), v.b(), (120.0 + 110.0 * pulse) as u8));
+    p.circle_filled(
+        ret,
+        1.6,
+        Color32::from_rgba_unmultiplied(v.r(), v.g(), v.b(), (120.0 + 110.0 * pulse) as u8),
+    );
 
     // bezel border + status strip
     p.rect_stroke(rect, 8.0, Stroke::new(1.5, BEZEL));

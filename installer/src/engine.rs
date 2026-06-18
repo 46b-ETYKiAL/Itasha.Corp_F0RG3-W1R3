@@ -47,7 +47,9 @@ fn extract_zip(bytes: &[u8], dest: &Path) -> Result<u64, String> {
     let mut written = 0u64;
     for i in 0..zip.len() {
         let mut f = zip.by_index(i).map_err(|e| format!("payload entry: {e}"))?;
-        let Some(rel) = f.enclosed_name() else { continue };
+        let Some(rel) = f.enclosed_name() else {
+            continue;
+        };
         let out = dest.join(rel);
         if f.is_dir() {
             std::fs::create_dir_all(&out).map_err(|e| format!("mkdir {out:?}: {e}"))?;
@@ -86,10 +88,20 @@ fn write_arp(dir: &Path, app_exe: &Path, uninst: &Path, size_kb: u32) -> Result<
         ("URLInfoAbout", config::HOMEPAGE),
     ];
     for (n, val) in strs {
-        run("reg", &["add", &key, "/v", n, "/t", "REG_SZ", "/d", val, "/f"])?;
+        run(
+            "reg",
+            &["add", &key, "/v", n, "/t", "REG_SZ", "/d", val, "/f"],
+        )?;
     }
-    for (n, val) in [("NoModify", "1"), ("NoRepair", "1"), ("EstimatedSize", &size_s)] {
-        run("reg", &["add", &key, "/v", n, "/t", "REG_DWORD", "/d", val, "/f"])?;
+    for (n, val) in [
+        ("NoModify", "1"),
+        ("NoRepair", "1"),
+        ("EstimatedSize", &size_s),
+    ] {
+        run(
+            "reg",
+            &["add", &key, "/v", n, "/t", "REG_DWORD", "/d", val, "/f"],
+        )?;
     }
     Ok(())
 }
@@ -97,18 +109,33 @@ fn write_arp(dir: &Path, app_exe: &Path, uninst: &Path, size_kb: u32) -> Result<
 fn ps(script: &str) -> Result<(), String> {
     run(
         "powershell",
-        &["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+        &[
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
     )
 }
 
 /// Run a PowerShell script and SURFACE the real error. Unlike `ps()`, this
 /// CAPTURES stderr (via `.output()`) so a `WScript.Shell` COM failure reports
 /// *what* went wrong rather than a bare exit code. `$ErrorActionPreference='Stop'`
-/// + the caller's try/catch turn non-terminating COM errors into a non-zero exit;
-/// this function turns that exit into a descriptive `Err`, not a silent skip.
+/// together with the caller's try/catch turn non-terminating COM errors into a
+/// non-zero exit; this function turns that exit into a descriptive `Err`, not a
+/// silent skip.
 fn ps_checked(script: &str) -> Result<(), String> {
     let mut c = Command::new("powershell");
-    c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script]);
+    c.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        script,
+    ]);
     #[cfg(windows)]
     c.creation_flags(CREATE_NO_WINDOW);
     match c.output() {
@@ -217,7 +244,12 @@ fn add_to_path(dir: &Path) -> Result<(), String> {
 
 /// Run the full install. `progress` receives (fraction, log-line) updates.
 pub fn install(opts: &Opts, payload: &[u8], progress: &dyn Fn(Step)) -> Result<(), String> {
-    let log = |frac: f32, label: &str| progress(Step { label: label.to_string(), frac });
+    let log = |frac: f32, label: &str| {
+        progress(Step {
+            label: label.to_string(),
+            frac,
+        })
+    };
 
     log(0.04, "designate partition");
     std::fs::create_dir_all(&opts.dir).map_err(|e| format!("create {:?}: {e}", opts.dir))?;
@@ -328,7 +360,10 @@ mod tests {
         assert_eq!(ps_lit("it's"), "it''s");
         assert_eq!(ps_lit(r"C:\Program Files\X"), r"C:\Program Files\X");
         // A path with an apostrophe (e.g. a user folder) stays a safe literal.
-        assert_eq!(ps_lit(r"C:\Users\O'Brien\app.lnk"), r"C:\Users\O''Brien\app.lnk");
+        assert_eq!(
+            ps_lit(r"C:\Users\O'Brien\app.lnk"),
+            r"C:\Users\O''Brien\app.lnk"
+        );
     }
 
     #[test]
