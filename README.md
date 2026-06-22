@@ -45,7 +45,10 @@ Shipping a desktop app means three different installer toolchains, three signing
 - **Branded macOS `.dmg`** — custom background + drag-to-Applications, with a sign → notarize → staple pipeline (Gatekeeper-offline-ready).
 - **Linux menu integration** — valid `.desktop` entry (`Categories=System;Utility;TerminalEmulator;`) + 256px hicolor icon + one-line `install.sh`.
 - **Reusable** — per-app override + shared defaults; C0PL4ND is the reference consumer.
-- **Local-first & private** — the installer does not phone home; no telemetry.
+- **Local-first & private** — telemetry-free by default: the installer collects
+  and transmits nothing on its own. It offers opt-in, default-OFF crash/issue
+  reporting (the in-house **W1TN3SS** SDK) that never sends without your explicit
+  consent. See [PRIVACY.md](PRIVACY.md).
 - **Supply-chain hardened** — pinned tool versions, SHA-pinned third-party Actions, `checksum.sha256` on artifacts.
 
 ---
