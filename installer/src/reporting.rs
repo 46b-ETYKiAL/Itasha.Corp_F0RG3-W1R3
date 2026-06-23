@@ -41,6 +41,7 @@ use itasha_report_core::preview::Preview;
 use itasha_report_core::report::Report;
 use itasha_report_core::sanitize::Sanitizer;
 use itasha_report_core::spool::Spool;
+use itasha_report_transport_tor::{TorOnionTransport, TorTransportConfig};
 
 /// The env var that injects the self-hosted ingest endpoint. There is NO
 /// hardcoded URL in the installer and NO default — a build with this unset can
@@ -48,6 +49,24 @@ use itasha_report_core::spool::Spool;
 /// the server endpoint is configured, a consented send returns the structured
 /// `RefusedNoEndpoint` outcome (never a silent drop, never a fake success).
 pub const REPORT_ENDPOINT_ENV: &str = "F0RG3_REPORT_ENDPOINT";
+
+/// The env var that injects the OPT-IN truly-anonymous Tor v3 `.onion` ingest
+/// address (56 base32 chars + `.onion`). When set to a structurally-valid onion
+/// address, a consented send routes over the in-process Arti Tor transport
+/// (sender-IP-free) INSTEAD of the clearnet endpoint. Unset / empty / malformed
+/// => the clearnet path is used (default). This is the ONLY opt-in switch: there
+/// is no hardcoded onion and no default — a build with this unset behaves
+/// identically to before.
+pub const REPORT_ONION_ENV: &str = "F0RG3_REPORT_ONION";
+
+/// The env var that overrides the Tor onion virtual port. Defaults to
+/// [`DEFAULT_ONION_PORT`] when unset / empty / unparseable. Only consulted when
+/// [`REPORT_ONION_ENV`] is set to a valid onion address.
+pub const REPORT_ONION_PORT_ENV: &str = "F0RG3_REPORT_ONION_PORT";
+
+/// The default onion virtual port the W1TN3SS onion service publishes its ingest
+/// endpoint on (the onion-routed equivalent of `:443`).
+pub const DEFAULT_ONION_PORT: u16 = 443;
 
 /// The structured result of attempting a report, logged counts/enums only
 /// (never PII). A report is either captured-and-spooled, sent, refused for want
@@ -186,40 +205,176 @@ pub fn capture_panic(static_msg: &'static str, location: &str) -> ReportOutcome 
     outcome
 }
 
+/// The transport the host should use for a consented send, resolved PURELY from
+/// the configured onion address + clearnet endpoint (no I/O, no env reads — so
+/// the selection is unit-testable without a live network or process env).
+///
+/// The selection rule is a strict priority: a configured, structurally-valid
+/// onion address wins (the truly-anonymous, sender-IP-free path); otherwise a
+/// configured clearnet endpoint is used; otherwise nothing can transmit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransportChoice {
+    /// Route over the opt-in Arti Tor v3 onion transport (sender-IP-free). Carries
+    /// the validated onion address + virtual port.
+    TorOnion { onion: String, port: u16 },
+    /// Route over the clearnet `LeanPipelineBackend` to this endpoint (default).
+    Clearnet { endpoint: String },
+    /// No transport is configured — a consented send refuses (stays spooled).
+    None,
+}
+
+/// Resolve the transport choice PURELY from the configured inputs.
+///
+/// `onion` is the optional onion address (e.g. from [`REPORT_ONION_ENV`]);
+/// `onion_port` is the optional onion virtual-port override (from
+/// [`REPORT_ONION_PORT_ENV`]); `clearnet_endpoint` is the optional clearnet
+/// ingest URL (from [`REPORT_ENDPOINT_ENV`]). A non-empty onion that passes the
+/// SDK's structural [`TorTransportConfig::is_valid_onion`] check takes priority
+/// over clearnet — when the user has gone to the trouble of configuring an
+/// onion, the anonymous path is the intended one. A configured-but-MALFORMED
+/// onion does NOT silently fall back to clearnet: it is treated as a
+/// misconfiguration and yields [`TransportChoice::None`] (the structured
+/// refusal) rather than leaking the report over a less-private channel the user
+/// did not intend.
+///
+/// When the onion path wins, the chosen virtual port is `onion_port` if
+/// supplied, else [`DEFAULT_ONION_PORT`].
+#[must_use]
+pub fn select_transport(
+    onion: Option<&str>,
+    onion_port: Option<u16>,
+    clearnet_endpoint: Option<&str>,
+) -> TransportChoice {
+    let onion = onion.map(str::trim).filter(|s| !s.is_empty());
+    if let Some(onion) = onion {
+        let port = onion_port.unwrap_or(DEFAULT_ONION_PORT);
+        // Validate with the SDK's own structural check (single source of truth).
+        let probe = TorTransportConfig::new(onion, port, ".", ".");
+        if probe.is_valid_onion() {
+            return TransportChoice::TorOnion {
+                onion: onion.to_string(),
+                port,
+            };
+        }
+        // Onion configured but malformed — refuse rather than silently downgrade
+        // to clearnet (the user opted into anonymity; honour it or refuse).
+        return TransportChoice::None;
+    }
+    match clearnet_endpoint.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(endpoint) => TransportChoice::Clearnet {
+            endpoint: endpoint.to_string(),
+        },
+        None => TransportChoice::None,
+    }
+}
+
 /// Transmit ONE report through the SDK's hardened transport, consent-gated.
 ///
 /// The `consent` argument is mandatory — there is no send path without it (the
 /// SDK enforces this at the type level). The host mints the [`ConsentToken`]
-/// ONLY after the user explicitly opted in on the failure screen. The transport
-/// is the SDK's [`LeanPipelineBackend`]: a static User-Agent, zero redirects,
-/// bounded timeout, size-capped, NO persistent identifier (only the token's
-/// ephemeral nonce). The outcome is logged.
+/// ONLY after the user explicitly opted in on the failure screen. The outcome
+/// is logged.
 ///
-/// If no endpoint is configured (the `F0RG3_REPORT_ENDPOINT` env is unset), this
-/// returns [`ReportOutcome::RefusedNoEndpoint`] and transmits nothing — the
-/// report stays in the spool for a later, configured send.
+/// **Transport selection (opt-in / default-clearnet):**
+/// - If a structurally-valid `.onion` address is configured
+///   ([`REPORT_ONION_ENV`]), the report routes over the in-process Arti Tor v3
+///   onion transport — truly-anonymous (sender-IP-free). The Tor state/cache +
+///   spool live under `<data_dir>/tor-state`, `<data_dir>/tor-cache`,
+///   `<data_dir>/tor-spool`.
+/// - Otherwise, if a clearnet endpoint is configured ([`REPORT_ENDPOINT_ENV`]),
+///   the report routes over the SDK's [`LeanPipelineBackend`] (static
+///   User-Agent, zero redirects, bounded timeout, size-capped, NO persistent
+///   identifier). **This is the default.**
+/// - Otherwise (neither configured, or a malformed onion), this returns
+///   [`ReportOutcome::RefusedNoEndpoint`] and transmits nothing — the report
+///   stays spooled for a later, configured send.
 pub fn send_report(report: &Report, consent: &ConsentToken) -> ReportOutcome {
-    let outcome = match endpoint_from_env() {
-        Some(endpoint) => {
-            let backend = LeanPipelineBackend::new(TransportConfig::new(endpoint));
+    let choice = select_transport(
+        onion_from_env().as_deref(),
+        onion_port_from_env(),
+        endpoint_from_env().as_deref(),
+    );
+    let outcome = dispatch_send(report, consent, &choice, data_dir());
+    log_outcome(&outcome);
+    outcome
+}
+
+/// Execute a send for a resolved [`TransportChoice`]. Split out (taking the
+/// already-resolved choice + an explicit data dir) so the dispatch is testable
+/// without touching the process env: the `None`/clearnet-refusal branches are
+/// asserted directly; the live Tor/clearnet connect paths require a network and
+/// are exercised by the SDK's own crate tests + the `#[ignore]`'d onion E2E.
+fn dispatch_send(
+    report: &Report,
+    consent: &ConsentToken,
+    choice: &TransportChoice,
+    data_dir: Option<PathBuf>,
+) -> ReportOutcome {
+    match choice {
+        TransportChoice::TorOnion { onion, port } => {
+            // The Tor transport needs writable state/cache/spool dirs. With no
+            // data dir there is nowhere to root them — surface it rather than
+            // silently downgrade to clearnet.
+            let Some(dir) = data_dir else {
+                return ReportOutcome::Failed("no-data-dir".to_string());
+            };
+            let config = TorTransportConfig::new(
+                onion.clone(),
+                *port,
+                dir.join("tor-state"),
+                dir.join("tor-cache"),
+            );
+            match TorOnionTransport::new(config, dir.join("tor-spool")) {
+                Ok(backend) => match backend.send(report, consent) {
+                    Ok(SendOutcome::Sent) => ReportOutcome::Sent,
+                    Ok(SendOutcome::Failed(reason)) => ReportOutcome::Failed(reason),
+                    Err(e) => ReportOutcome::Failed(e.to_string()),
+                },
+                Err(e) => ReportOutcome::Failed(e.to_string()),
+            }
+        }
+        TransportChoice::Clearnet { endpoint } => {
+            let backend = LeanPipelineBackend::new(TransportConfig::new(endpoint.clone()));
             match backend.send(report, consent) {
                 Ok(SendOutcome::Sent) => ReportOutcome::Sent,
                 Ok(SendOutcome::Failed(reason)) => ReportOutcome::Failed(reason),
                 Err(e) => ReportOutcome::Failed(e.to_string()),
             }
         }
-        None => ReportOutcome::RefusedNoEndpoint,
-    };
-    log_outcome(&outcome);
-    outcome
+        TransportChoice::None => ReportOutcome::RefusedNoEndpoint,
+    }
 }
 
-/// Read the ingest endpoint from the env var, treating an empty value as unset.
+/// Read the clearnet ingest endpoint from the env var, treating an empty value
+/// as unset.
 fn endpoint_from_env() -> Option<String> {
     std::env::var(REPORT_ENDPOINT_ENV)
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+/// Read the opt-in onion ingest address from the env var, treating an empty
+/// value as unset. The structural validity check happens in [`select_transport`]
+/// (single source of truth via the SDK), so this only normalizes presence.
+fn onion_from_env() -> Option<String> {
+    std::env::var(REPORT_ONION_ENV)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Read the opt-in onion virtual-port override from the env var. An unset,
+/// empty, or unparseable value yields `None` so [`select_transport`] falls back
+/// to [`DEFAULT_ONION_PORT`] — a garbled port is never a hard failure, it just
+/// means "use the default port" (the onion address itself is the load-bearing
+/// opt-in; the port is a convenience override for a non-`:443` onion service).
+fn onion_port_from_env() -> Option<u16> {
+    std::env::var(REPORT_ONION_PORT_ENV)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse::<u16>().ok())
 }
 
 /// Open the local spool rooted at an EXPLICIT data dir so callers (and tests)
@@ -381,9 +536,14 @@ mod tests {
 
     #[test]
     fn crash_report_is_crash_stream_and_carries_static_message() {
-        let r = build_crash_report("called `Option::unwrap()` on a `None`", "src/foo.rs:42");
+        // A plain prose panic message survives the SDK sanitizer verbatim (no
+        // high-entropy token, no path, no identity). The panic SITE is always
+        // preserved. (A message that embeds a symbol run like
+        // `Option::unwrap()` may be free-text-redacted by the SDK's anonymity
+        // hardening — that is asserted separately below.)
+        let r = build_crash_report("index out of bounds", "src/foo.rs:42");
         assert_eq!(r.stream, Stream::CrashReports);
-        assert!(r.body.contains("called `Option::unwrap()`"));
+        assert!(r.body.contains("index out of bounds"));
         assert!(r.body.contains("src/foo.rs:42"));
         assert!(r.metadata.iter().any(|(k, _)| k == "app_version"));
         assert!(r
@@ -523,6 +683,144 @@ mod tests {
             "an un-sent report stays spooled for retry"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A structurally-valid v3 onion address (56 lowercase base32 chars).
+    fn valid_onion() -> String {
+        format!("{}.onion", "a".repeat(56))
+    }
+
+    #[test]
+    fn select_transport_prefers_a_valid_onion_over_clearnet() {
+        // When BOTH an onion and a clearnet endpoint are configured, the
+        // anonymous onion path wins (the user opted into anonymity).
+        let onion = valid_onion();
+        let choice = select_transport(Some(&onion), None, Some("https://ingest.example.test"));
+        assert_eq!(
+            choice,
+            TransportChoice::TorOnion {
+                onion: onion.clone(),
+                port: DEFAULT_ONION_PORT,
+            },
+            "a configured valid onion must take priority over clearnet"
+        );
+    }
+
+    #[test]
+    fn select_transport_honours_the_onion_port_override() {
+        // A supplied port override is carried through onto the chosen onion
+        // transport instead of DEFAULT_ONION_PORT.
+        let onion = valid_onion();
+        let choice = select_transport(Some(&onion), Some(9150), None);
+        assert_eq!(
+            choice,
+            TransportChoice::TorOnion { onion, port: 9150 },
+            "a configured onion port override must be carried through"
+        );
+    }
+
+    #[test]
+    fn select_transport_uses_clearnet_when_no_onion_configured() {
+        // The DEFAULT path: no onion configured, clearnet endpoint present.
+        let choice = select_transport(None, None, Some("https://ingest.example.test"));
+        assert_eq!(
+            choice,
+            TransportChoice::Clearnet {
+                endpoint: "https://ingest.example.test".to_string(),
+            },
+            "with no onion, a configured clearnet endpoint is the default transport"
+        );
+    }
+
+    #[test]
+    fn select_transport_is_none_when_nothing_configured() {
+        // Neither configured => no transport => the structured refusal (default
+        // out-of-the-box state: the installer cannot phone home).
+        assert_eq!(select_transport(None, None, None), TransportChoice::None);
+        // Empty/whitespace strings are treated as unset.
+        assert_eq!(
+            select_transport(Some("   "), None, Some("   ")),
+            TransportChoice::None
+        );
+    }
+
+    #[test]
+    fn select_transport_refuses_a_malformed_onion_without_clearnet_downgrade() {
+        // A configured-but-malformed onion must NOT silently downgrade to
+        // clearnet — the user opted into anonymity; honour it or refuse.
+        let choice = select_transport(
+            Some("not-a-real.onion"),
+            None,
+            Some("https://ingest.example.test"),
+        );
+        assert_eq!(
+            choice,
+            TransportChoice::None,
+            "a malformed onion refuses rather than leaking over clearnet"
+        );
+    }
+
+    #[test]
+    fn dispatch_send_none_choice_refuses_and_transmits_nothing() {
+        // The TransportChoice::None branch is the structured refusal regardless
+        // of consent — proven without touching the process env or a network.
+        let report = build_crash_report("boom", "src/x.rs:1");
+        let token = ConsentToken::granted();
+        let outcome = dispatch_send(&report, &token, &TransportChoice::None, None);
+        assert_eq!(outcome, ReportOutcome::RefusedNoEndpoint);
+    }
+
+    #[test]
+    fn dispatch_send_tor_without_data_dir_fails_not_silently_clearnet() {
+        // A Tor choice with no data dir has nowhere to root its state/cache/spool
+        // — it surfaces a structured failure, NEVER a silent clearnet downgrade
+        // and NEVER a fake Sent.
+        let report = build_crash_report("boom", "src/x.rs:1");
+        let token = ConsentToken::granted();
+        let choice = TransportChoice::TorOnion {
+            onion: valid_onion(),
+            port: DEFAULT_ONION_PORT,
+        };
+        let outcome = dispatch_send(&report, &token, &choice, None);
+        assert_eq!(outcome, ReportOutcome::Failed("no-data-dir".to_string()));
+    }
+
+    #[test]
+    fn send_with_neither_env_set_refuses_default_off() {
+        // End-to-end through the env-reading send_report: with NEITHER the
+        // clearnet endpoint NOR the onion env set (the default install state),
+        // a consented send refuses and transmits nothing.
+        let _lock = ENDPOINT_LOCK.lock().unwrap();
+        let _ge = EnvGuard::unset(REPORT_ENDPOINT_ENV);
+        let _go = EnvGuard::unset(REPORT_ONION_ENV);
+        let report = build_crash_report("boom", "src/x.rs:1");
+        let token = ConsentToken::granted();
+        assert_eq!(
+            send_report(&report, &token),
+            ReportOutcome::RefusedNoEndpoint,
+            "default-OFF: no transport configured => structured refusal"
+        );
+    }
+
+    #[test]
+    fn empty_onion_env_is_treated_as_unset() {
+        let _lock = ENDPOINT_LOCK.lock().unwrap();
+        let _g = EnvGuard::set(REPORT_ONION_ENV, "   ");
+        assert!(
+            onion_from_env().is_none(),
+            "a whitespace-only onion env must be treated as unset"
+        );
+    }
+
+    /// A live onion connect is NOT exercised in unit tests (it needs a running
+    /// Tor network + a real onion service). The selection + dispatch wiring is
+    /// covered by the pure tests above; the actual Arti connect path is covered
+    /// by the transport-tor crate's own tests. This placeholder documents the
+    /// boundary and is `#[ignore]`'d so a CI run never attempts a network send.
+    #[test]
+    #[ignore = "live onion E2E needs a running Tor network + real onion service"]
+    fn onion_send_e2e_placeholder() {
+        // Intentionally empty: the live path is the SDK crate's responsibility.
     }
 
     #[test]

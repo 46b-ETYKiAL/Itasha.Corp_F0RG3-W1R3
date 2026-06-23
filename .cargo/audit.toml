@@ -1,0 +1,10 @@
+# cargo-audit 0.22.x workspace config
+# Scoped ignores for transitive Arti/tor-* deps with no upgrade path (2026-06-23).
+# Gate not disabled — only no-upgrade-path advisories suppressed with reasons
+# documented in deny.toml [advisories] ignore section (authoritative rationale).
+
+[advisories]
+ignore = [
+    "RUSTSEC-2023-0071",
+    "RUSTSEC-2026-0186",
+]
