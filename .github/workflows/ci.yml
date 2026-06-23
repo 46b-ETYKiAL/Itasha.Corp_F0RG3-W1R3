@@ -227,6 +227,16 @@ jobs:
       - name: Test installer crate (headless)
         run: cargo test --manifest-path installer/Cargo.toml --no-default-features --locked
 
+      - name: Install cargo-llvm-cov (pinned)
+        run: cargo install cargo-llvm-cov --version 0.8.7 --locked
+
+      - name: Coverage gate (line floor — guards the W1TN3SS reporting integration)
+        # Enforces a line-coverage floor over the headless installer crate. The
+        # privacy-critical reporting integration (installer/src/reporting.rs) is
+        # covered to 100% of its testable surface; uncoverable network/daemon/
+        # cross-platform-cfg lines are documented in docs/coverage-reporting.md.
+        run: sh scripts/coverage.sh 94
+
       - name: Install cargo-audit (pinned)
         # 0.22.x ships the CVSS-v4-capable rustsec/cvss crates; 0.21.2 errored
         # "unsupported CVSS version: 4.0" on RustSec advisories using CVSS:4.0.

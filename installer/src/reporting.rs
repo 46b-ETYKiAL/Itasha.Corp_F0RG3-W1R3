@@ -533,6 +533,36 @@ mod tests {
 
     use std::sync::Mutex;
     static ENDPOINT_LOCK: Mutex<()> = Mutex::new(());
+    /// Serializes the tests that mutate the platform data-dir env var
+    /// (`LOCALAPPDATA` on Windows / `XDG_DATA_HOME` + `HOME` elsewhere), which
+    /// the GLOBAL [`data_dir`] reads. Without this lock, two such tests running
+    /// concurrently would clobber each other's env.
+    static DATA_DIR_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Point the GLOBAL [`data_dir`] at `dir` for the duration of the returned
+    /// guards by setting the platform per-user data-dir env var. On Windows that
+    /// is `LOCALAPPDATA` (and [`data_dir`] appends `itasha-installer`); elsewhere
+    /// it is `XDG_DATA_HOME` (with `HOME` also pinned so the fallback can never
+    /// resolve to the real home). The caller MUST hold [`DATA_DIR_LOCK`] first.
+    /// The installer-suffix means the spool is rooted at `<dir>/itasha-installer`,
+    /// so each test gets a private, collision-free tree.
+    fn point_data_dir_at(dir: &Path) -> Vec<EnvGuard> {
+        let p = dir.to_str().expect("temp dir is valid UTF-8");
+        #[cfg(windows)]
+        {
+            vec![EnvGuard::set("LOCALAPPDATA", p)]
+        }
+        #[cfg(not(windows))]
+        {
+            vec![EnvGuard::set("XDG_DATA_HOME", p), EnvGuard::set("HOME", p)]
+        }
+    }
+
+    /// The spool dir the GLOBAL [`data_dir`] resolves to under
+    /// [`point_data_dir_at`] (it appends `itasha-installer`).
+    fn global_spool_root(base: &Path) -> PathBuf {
+        base.join("itasha-installer")
+    }
 
     #[test]
     fn crash_report_is_crash_stream_and_carries_static_message() {
@@ -840,5 +870,467 @@ mod tests {
         assert_eq!(loaded.stream, Stream::CrashReports);
         assert!(loaded.body.contains("boom"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // --- capture_panic: the panic-hook capture seam over the GLOBAL data_dir ---
+
+    #[test]
+    fn capture_panic_spools_into_the_global_data_dir() {
+        // With the platform data-dir env pointed at a temp tree, capture_panic
+        // resolves the GLOBAL data_dir(), opens the spool, builds the sanitized
+        // crash report, and ENQUEUES it — returning Spooled (never Sent: the
+        // panic hook transmits NOTHING). The spooled report is a real, loadable
+        // CrashReports entry carrying our static message + site.
+        let _lock = DATA_DIR_LOCK.lock().unwrap();
+        let base = std::env::temp_dir().join(format!("f0rg3-capture-ok-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("mkdir");
+        let _guards = point_data_dir_at(&base);
+
+        let outcome = capture_panic("kaboom", "src/q.rs:7");
+        assert_eq!(
+            outcome,
+            ReportOutcome::Spooled,
+            "a captured panic spools locally (never transmits)"
+        );
+
+        // Prove the report actually landed in the global-resolved spool and is a
+        // loadable crash carrying our payload (kills a mutant that returns
+        // Spooled without enqueueing).
+        let spool_root = global_spool_root(&base);
+        let spool = open_spool_in(&spool_root).expect("spool exists at global data dir");
+        let paths = spool.list().expect("list");
+        assert_eq!(paths.len(), 1, "exactly one report was spooled");
+        let loaded = spool.load(&paths[0]).expect("load");
+        assert_eq!(loaded.stream, Stream::CrashReports);
+        assert!(loaded.body.contains("kaboom"));
+        assert!(loaded.body.contains("src/q.rs:7"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn capture_panic_without_a_data_dir_fails_no_data_dir() {
+        // When NO platform data dir resolves (no XDG_DATA_HOME and no HOME),
+        // data_dir() is None, so capture_panic surfaces the structured
+        // "no-data-dir" failure rather than silently swallowing the crash.
+        // (Windows always has LOCALAPPDATA-class resolution paths in CI, so this
+        // None branch is asserted on the unix data_dir() shape.)
+        let _lock = DATA_DIR_LOCK.lock().unwrap();
+        let _gx = EnvGuard::unset("XDG_DATA_HOME");
+        let _gh = EnvGuard::unset("HOME");
+        let outcome = capture_panic("kaboom", "src/q.rs:7");
+        assert_eq!(
+            outcome,
+            ReportOutcome::Failed("no-data-dir".to_string()),
+            "no data dir => structured failure, never a silent drop"
+        );
+    }
+
+    #[test]
+    fn capture_panic_is_silent_under_disable_telemetry_but_still_spools() {
+        // S4F3_DISABLE_TELEMETRY=1 silences the outcome LOG (the early return in
+        // log_outcome) but does NOT change the capture behaviour: the report is
+        // still spooled. Privacy-respecting telemetry suppression must never
+        // become a silent capture failure.
+        let _lock = DATA_DIR_LOCK.lock().unwrap();
+        let _gt = EnvGuard::set("S4F3_DISABLE_TELEMETRY", "1");
+        let base =
+            std::env::temp_dir().join(format!("f0rg3-capture-silent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("mkdir");
+        let _guards = point_data_dir_at(&base);
+
+        let outcome = capture_panic("hush", "src/q.rs:9");
+        assert_eq!(outcome, ReportOutcome::Spooled);
+
+        let spool = open_spool_in(&global_spool_root(&base)).expect("spool");
+        assert_eq!(
+            spool.list().expect("list").len(),
+            1,
+            "still spooled silently"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn data_dir_resolves_under_a_pointed_env() {
+        // data_dir() returns Some under a pointed platform env (and the path is
+        // suffixed with the installer namespace). This pins the resolver the
+        // capture seam depends on.
+        let _lock = DATA_DIR_LOCK.lock().unwrap();
+        let base = std::env::temp_dir().join(format!("f0rg3-datadir-{}", std::process::id()));
+        let _guards = point_data_dir_at(&base);
+        let resolved = data_dir().expect("a pointed env resolves a data dir");
+        assert!(
+            resolved.ends_with("itasha-installer"),
+            "the data dir is namespaced to the installer: {resolved:?}"
+        );
+    }
+
+    // --- CrashConsentState::load_from_spool stream-filtering + multi-advance ---
+
+    #[test]
+    fn load_from_spool_keeps_only_crash_stream_reports() {
+        // The dialog drains CRASH reports only — a spooled ManualIssues report
+        // (the other stream the SDK can spool) is FILTERED OUT, never presented
+        // on the crash-consent dialog. This exercises the false arm of the
+        // `stream == CrashReports` filter (a mutant that drops the filter would
+        // wrongly surface the manual issue).
+        let dir = std::env::temp_dir().join(format!("f0rg3-filter-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let spool = open_spool_in(&dir).expect("spool");
+        // One crash + one manual issue spooled together.
+        spool
+            .enqueue(&build_crash_report("real-crash", "src/x.rs:1"))
+            .expect("enqueue crash");
+        spool
+            .enqueue(&Report::manual_issue("a title", "a manual issue body"))
+            .expect("enqueue manual");
+
+        let mut st = CrashConsentState::default();
+        st.set_data_dir(Some(dir.clone()));
+        let n = st.load_from_spool();
+        assert_eq!(
+            n, 1,
+            "only the crash report is queued+presented (manual filtered out)"
+        );
+        assert!(st.has_pending());
+        assert!(
+            st.edited_text_mut().contains("real-crash"),
+            "the presented report is the crash, not the manual issue"
+        );
+        assert!(
+            !st.edited_text_mut().contains("a manual issue body"),
+            "the manual issue is never surfaced on the crash dialog"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_from_spool_presents_multiple_crashes_in_sequence() {
+        // Two spooled crashes: load presents the first; declining advances to the
+        // second; declining again clears. This drives `advance` across a
+        // non-empty queue more than once (the multi-report advance path) and
+        // proves each decline removes exactly one spooled file.
+        let dir = std::env::temp_dir().join(format!("f0rg3-multi-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let spool = open_spool_in(&dir).expect("spool");
+        spool
+            .enqueue(&build_crash_report("first-crash", "src/a.rs:1"))
+            .expect("enqueue 1");
+        spool
+            .enqueue(&build_crash_report("second-crash", "src/b.rs:2"))
+            .expect("enqueue 2");
+
+        let mut st = CrashConsentState::default();
+        st.set_data_dir(Some(dir.clone()));
+        let n = st.load_from_spool();
+        assert_eq!(n, 2, "both crashes are queued");
+        assert!(st.has_pending(), "the first crash is presented");
+
+        // Decline the first -> advance to the second.
+        st.decline_and_discard();
+        assert!(st.has_pending(), "the second crash is now presented");
+        assert_eq!(
+            open_spool_in(&dir)
+                .and_then(|s| s.count().ok())
+                .unwrap_or(99),
+            1,
+            "declining removed exactly the first spooled file"
+        );
+
+        // Decline the second -> queue drained, nothing pending.
+        st.decline_and_discard();
+        assert!(
+            !st.has_pending(),
+            "the queue is drained after both declines"
+        );
+        assert_eq!(
+            open_spool_in(&dir)
+                .and_then(|s| s.count().ok())
+                .unwrap_or(99),
+            0,
+            "both declined files are removed from the spool"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_from_spool_skips_a_corrupt_spool_file_without_crashing() {
+        // A garbage `report-*.json` file in the spool dir is LISTED by the SDK
+        // (it matches the name pattern) but FAILS to load (invalid JSON). The
+        // dialog must skip it (the `if let Ok(report)` false arm in
+        // load_from_spool) and still present the one valid crash — a corrupt
+        // spool entry is best-effort-skipped, never a crash and never surfaced
+        // as an empty/garbled report.
+        let dir = std::env::temp_dir().join(format!("f0rg3-corrupt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let spool = open_spool_in(&dir).expect("spool");
+        spool
+            .enqueue(&build_crash_report("good-crash", "src/a.rs:1"))
+            .expect("enqueue good");
+        // Hand-write a corrupt entry matching the SDK's `report-*.json` listing
+        // pattern but with non-JSON content so `spool.load` returns Err.
+        std::fs::write(
+            spool.dir().join("report-zzzzzzzzzz-corrupt.json"),
+            b"this is not valid json {{{",
+        )
+        .expect("write corrupt file");
+
+        let mut st = CrashConsentState::default();
+        st.set_data_dir(Some(dir.clone()));
+        let n = st.load_from_spool();
+        assert_eq!(
+            n, 1,
+            "the corrupt entry is skipped; only the valid crash is queued"
+        );
+        assert!(st.has_pending(), "the valid crash is still presented");
+        assert!(
+            st.edited_text_mut().contains("good-crash"),
+            "the surviving report is the valid crash, not the corrupt entry"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn advance_skips_a_corrupt_entry_queued_after_a_valid_one() {
+        // Drive `advance`'s load-failure arm directly: a queue whose SECOND entry
+        // is corrupt. Declining the first advances to the second; the second's
+        // load fails so the dialog ends with nothing pending (the corrupt entry
+        // is not surfaced). This covers the `if let Ok(report)` false arm inside
+        // advance (distinct from the load_from_spool filter loop).
+        //
+        // load_from_spool only QUEUES entries that load+match the crash stream,
+        // so to seat a corrupt path in the queue we set the data dir, enqueue a
+        // valid crash, load it (queueing nothing extra), then corrupt-replace the
+        // CURRENT report's backing file before declining — forcing advance to try
+        // to (re)load a now-unreadable path is not possible via the public API;
+        // instead we seat TWO valid crashes, corrupt the SECOND's file after
+        // load_from_spool has queued it, and decline the first so advance hits
+        // the corrupt second.
+        let dir = std::env::temp_dir().join(format!("f0rg3-adv-corrupt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let spool = open_spool_in(&dir).expect("spool");
+        // Filenames are timestamp-stamped + sorted; enqueue with a beat between
+        // so ordering is deterministic (first listed = first queued).
+        let p1 = spool
+            .enqueue(&build_crash_report("first", "src/a.rs:1"))
+            .expect("enqueue 1");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let p2 = spool
+            .enqueue(&build_crash_report("second", "src/b.rs:2"))
+            .expect("enqueue 2");
+        assert!(p1 < p2, "first enqueue sorts before second");
+
+        let mut st = CrashConsentState::default();
+        st.set_data_dir(Some(dir.clone()));
+        let n = st.load_from_spool();
+        assert_eq!(n, 2, "both valid crashes are queued");
+        assert!(
+            st.edited_text_mut().contains("first"),
+            "the first crash is presented"
+        );
+
+        // Now corrupt the SECOND file's content so advance's reload of it fails.
+        std::fs::write(&p2, b"corrupted-after-queueing {{{").expect("corrupt second");
+
+        // Decline the first -> advance pops the (now-corrupt) second; its load
+        // fails so the dialog clears `current` (nothing pending) rather than
+        // surfacing a broken report.
+        st.decline_and_discard();
+        assert!(
+            !st.has_pending(),
+            "the corrupt second entry is not surfaced; the dialog clears"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn capture_panic_surfaces_spool_open_failure() {
+        // Fault-inject a spool-OPEN failure: point the GLOBAL data_dir at a path
+        // that already exists AS A FILE, so `Spool::open` (which create_dir_all's
+        // `<data_dir>/reports`) fails. capture_panic must surface the structured
+        // "spool-open: …" Failed outcome — never a silent swallow, never a fake
+        // Spooled.
+        let _lock = DATA_DIR_LOCK.lock().unwrap();
+        // data_dir() resolves to <env>/itasha-installer, then Spool::open creates
+        // <env>/itasha-installer/reports. Make `itasha-installer` a regular file
+        // so the `reports` subdir cannot be created under it.
+        let base =
+            std::env::temp_dir().join(format!("f0rg3-spool-open-fail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("mkdir base");
+        // Create the `itasha-installer` path as a FILE (not a dir).
+        std::fs::write(base.join("itasha-installer"), b"i am a file, not a dir")
+            .expect("write blocking file");
+        let _guards = point_data_dir_at(&base);
+
+        let outcome = capture_panic("boom", "src/x.rs:1");
+        match outcome {
+            ReportOutcome::Failed(detail) => assert!(
+                detail.starts_with("spool-open:"),
+                "a spool-open failure surfaces the structured spool-open detail, got: {detail}"
+            ),
+            other => panic!("expected a spool-open Failed outcome, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn decline_with_unbound_spool_clears_current_without_panicking() {
+        // A report is loaded (current is Some), then the data dir is UNBOUND.
+        // decline_and_discard takes `current` but `self.spool()` is None, so the
+        // remove is skipped (the `if let Some(spool)` false arm) — the dialog
+        // still clears cleanly. Covers decline's spool-None branch.
+        let dir = std::env::temp_dir().join(format!("f0rg3-decline-none-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        open_spool_in(&dir)
+            .unwrap()
+            .enqueue(&build_crash_report("boom", "src/x.rs:1"))
+            .expect("enqueue");
+        let mut st = CrashConsentState::default();
+        st.set_data_dir(Some(dir.clone()));
+        st.load_from_spool();
+        assert!(st.has_pending(), "a report is loaded");
+        // Unbind the spool, THEN decline.
+        st.set_data_dir(None);
+        st.decline_and_discard();
+        assert!(
+            !st.has_pending(),
+            "the dialog clears even with no bound spool"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn advance_with_unbound_spool_and_nonempty_queue_presents_nothing() {
+        // Seat TWO crashes in the queue, then UNBIND the spool before declining.
+        // Declining the first calls advance with a NON-EMPTY queue but no bound
+        // spool, so advance's `if let Some(spool)` false arm runs: it pops the
+        // path but cannot reload it, leaving `current` None. The dialog clears
+        // rather than surfacing a report it cannot read.
+        let dir = std::env::temp_dir().join(format!("f0rg3-adv-none-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let spool = open_spool_in(&dir).expect("spool");
+        spool
+            .enqueue(&build_crash_report("first", "src/a.rs:1"))
+            .expect("enqueue 1");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        spool
+            .enqueue(&build_crash_report("second", "src/b.rs:2"))
+            .expect("enqueue 2");
+        let mut st = CrashConsentState::default();
+        st.set_data_dir(Some(dir.clone()));
+        assert_eq!(st.load_from_spool(), 2, "both queued");
+        // Unbind: now the queue still holds the second path, but spool() is None.
+        st.set_data_dir(None);
+        st.decline_and_discard();
+        assert!(
+            !st.has_pending(),
+            "advance with an unbound spool cannot reload the next entry; dialog clears"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_from_spool_with_unbound_spool_presents_nothing() {
+        // load_from_spool with no bound data dir skips the spool-read entirely
+        // (the `if let Some(spool)` false arm in load_from_spool) and presents
+        // nothing — the inert default-state path, asserted distinctly from the
+        // default-construction test.
+        let mut st = CrashConsentState::default();
+        st.set_data_dir(None);
+        assert_eq!(st.load_from_spool(), 0);
+        assert!(!st.has_pending());
+    }
+
+    #[test]
+    fn consent_and_send_returns_none_when_nothing_pending() {
+        // With no report loaded, consent_and_send is a no-op returning None (the
+        // `self.current.take()?` early bail). A mutant that proceeds to send on
+        // an empty dialog is killed here.
+        let mut st = CrashConsentState::default();
+        assert!(
+            st.consent_and_send().is_none(),
+            "no pending report => Send is a no-op"
+        );
+    }
+
+    #[test]
+    fn consent_and_send_without_endpoint_advances_to_next_and_keeps_both_spooled() {
+        // Two spooled crashes, no endpoint. Pressing Send on the first returns
+        // RefusedNoEndpoint, KEEPS the file spooled (no fake Sent / silent drop),
+        // and ADVANCES to the second. This drives consent_and_send's NON-Sent
+        // path (the file-retain branch) plus the post-send advance.
+        let _lock = ENDPOINT_LOCK.lock().unwrap();
+        let _ge = EnvGuard::unset(REPORT_ENDPOINT_ENV);
+        let _go = EnvGuard::unset(REPORT_ONION_ENV);
+        let dir = std::env::temp_dir().join(format!("f0rg3-send-advance-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let spool = open_spool_in(&dir).expect("spool");
+        spool
+            .enqueue(&build_crash_report("c1", "src/a.rs:1"))
+            .expect("enqueue 1");
+        spool
+            .enqueue(&build_crash_report("c2", "src/b.rs:2"))
+            .expect("enqueue 2");
+
+        let mut st = CrashConsentState::default();
+        st.set_data_dir(Some(dir.clone()));
+        st.load_from_spool();
+
+        let outcome = st.consent_and_send().expect("first report pending");
+        assert_eq!(
+            outcome,
+            ReportOutcome::RefusedNoEndpoint,
+            "no endpoint => structured refusal, not a fake Sent"
+        );
+        assert!(st.has_pending(), "Send advanced to the second crash");
+        assert_eq!(
+            open_spool_in(&dir)
+                .and_then(|s| s.count().ok())
+                .unwrap_or(99),
+            2,
+            "an un-sent report is KEPT spooled for retry (neither file removed)"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn env_guard_restores_a_preexisting_value_on_drop() {
+        // The EnvGuard test fixture must RESTORE a pre-existing env value on drop
+        // (the `Some(prev)` restore arm), not leave the override or wrongly
+        // delete a value that was there before. This pins the fixture the other
+        // env-mutating tests rely on for isolation.
+        let key = "F0RG3_ENVGUARD_FIXTURE_PROBE";
+        // Ensure a known prior value exists.
+        std::env::set_var(key, "original");
+        {
+            let _g = EnvGuard::set(key, "overridden");
+            assert_eq!(std::env::var(key).as_deref(), Ok("overridden"));
+        }
+        assert_eq!(
+            std::env::var(key).as_deref(),
+            Ok("original"),
+            "the guard restored the pre-existing value on drop"
+        );
+        // And the unset guard restores a previously-absent var to absent.
+        std::env::remove_var(key);
+        {
+            let _g = EnvGuard::set(key, "temp");
+            assert!(std::env::var(key).is_ok());
+        }
+        assert!(
+            std::env::var(key).is_err(),
+            "the guard restored the var to ABSENT (it had no prior value)"
+        );
     }
 }
