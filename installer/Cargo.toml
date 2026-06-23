@@ -21,13 +21,28 @@ elevate = []
 eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts"] }
 egui = "0.29"
 zip = { version = "2", default-features = false, features = ["deflate"] }
-# W1TN3SS opt-in crash/error/issue reporting SDK (first-party, pinned git tag;
+# W1TN3SS opt-in crash/error/issue reporting SDK (first-party, pinned git rev;
 # default-OFF, consent-gated). The installer implements NO SDK behaviour — the
 # config model, sanitizer, spool, transport, preview + consent gate, and the
 # manual issue-form intake all live in the SDK and are CALLED from
-# `src/reporting.rs` + `src/issue_intake.rs`. Pinned to an exact tag so an SDK
+# `src/reporting.rs` + `src/issue_intake.rs`. Pinned to an exact rev so an SDK
 # change can never break the installer until it bumps.
-itasha-report-core = { git = "https://github.com/46b-ETYKiAL/Itasha.Corp_S4F3-W1TN3SS.git", tag = "itasha-report-core-v0.2.0" }
+#
+# Pinned by REV (not tag): the `itasha-report-core-v0.2.0` tag predates the
+# content-scrubbing (PR#1) + crash-capture (PR#3) hardening that landed on
+# `main` afterwards. There is no tag on the hardened HEAD, so the pin is the
+# exact commit. The crate version stays "0.2.0" — that is expected; the bump is
+# by rev, picking up the post-tag hardening on the same crate version.
+itasha-report-core = { git = "https://github.com/46b-ETYKiAL/Itasha.Corp_S4F3-W1TN3SS.git", rev = "7464eab1e4b7374f811ea4668b4696b0a533f2fc" }
+
+# Opt-in truly-anonymous (sender-IP-free) Tor v3 onion transport. A SEPARATE
+# crate (NOT a feature on itasha-report-core) so the large Arti `tor-*`
+# dependency tree + its cargo-audit/vet surface are imported ONLY by this
+# installer's anonymous send path — the base crate's dep tree is untouched for
+# any consumer that does not opt in. Same git url + rev as the SDK spine.
+# DEFAULT OFF: a build with no onion address configured never instantiates this
+# transport and behaves identically to before (clearnet `LeanPipelineBackend`).
+itasha-report-transport-tor = { git = "https://github.com/46b-ETYKiAL/Itasha.Corp_S4F3-W1TN3SS.git", rev = "7464eab1e4b7374f811ea4668b4696b0a533f2fc" }
 
 [build-dependencies]
 embed-manifest = "1.4"

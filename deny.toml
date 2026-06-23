@@ -1,0 +1,80 @@
+# cargo-deny configuration for the F0RG3 installer workspace.
+#
+# Gate: licenses allow FOSS standard stack; advisories ignore only no-upgrade-path
+# unmaintained/vulnerability crates with documented rationale (never wholesale
+# disable the gate). All three scoped ignores are transitive Arti/tor-* deps;
+# no upgrade path exists at the time of this pin (Arti 0.43.0 / 2026-06-23).
+
+[licenses]
+# Explicitly allowed: the FOSS license set present in this workspace.
+# "OR" expressions are satisfied when ANY listed alternative is allowed.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "MPL-2.0",
+    "OpenSSL",
+    "LGPL-3.0-only",
+    "LGPL-3.0-or-later",
+    # Additional licenses present in transitive deps:
+    "Unlicense",          # eg. heck (MIT OR Apache-2.0 OR Unlicense) via Arti macros
+    "BSL-1.0",            # eg. ryu, lexical-* (MIT OR Apache-2.0 OR BSL-1.0)
+    "OFL-1.1",            # embedded font in egui (MIT OR Apache-2.0) AND OFL-1.1
+    "LicenseRef-UFL-1.0", # Ubuntu Font License – used by egui embedded Ubuntu font
+    "CDLA-Permissive-2.0",# Community Data License Agreement – some Arti data tables
+]
+# Private crates (publish = false) that ship no binaries to end users and are
+# used only inside git-sourced dependencies are permitted without a license
+# expression.
+private = { ignore = true }
+
+[advisories]
+# Scoped ignores — documented rationale required; no path to an upgrade exists
+# for any of these at the current Arti 0.43.0 pin (2026-06-23).
+
+ignore = [
+    # RUSTSEC-2024-0436 — `paste` (unmaintained, archived by dtolnay).
+    # No safe upgrade: `pastey`/`with_builtin_macros` are not yet adopted by
+    # Arti's `pwd-grp` → `fs-mistrust` chain. Risk: maintenance gap only, no
+    # CVE/vulnerability. Arti 0.43.0 is the latest release; resolution blocked
+    # on upstream.
+    { id = "RUSTSEC-2024-0436", reason = "Transitive dep via Arti pwd-grp/fs-mistrust; maintenance-only advisory, no CVE. No upgrade path at Arti 0.43.0. Revisit on next Arti bump." },
+
+    # RUSTSEC-2026-0173 — `proc-macro-error2` (unmaintained fork).
+    # Pre-existing on base HEAD before the transport-tor WIP. Used by Arti's
+    # macro infrastructure. No viable upstream upgrade at Arti 0.43.0.
+    # Risk: maintenance gap only, no CVE/vulnerability.
+    { id = "RUSTSEC-2026-0173", reason = "Pre-existing transitive dep via Arti; maintenance-only advisory. No upgrade path at Arti 0.43.0. Revisit on next Arti bump." },
+
+    # RUSTSEC-2023-0071 — `rsa` (Marvin Attack timing side-channel).
+    # Transitive dep via Arti's tor-key-forge → ssh-key-fork-arti → rsa.
+    # The advisory notes: 'local use on a non-compromised computer is fine' —
+    # the installer is a local, one-shot process with no remote timing oracle
+    # exposed to an adversary. The RSA key material is Tor circuit crypto internal
+    # to Arti; an attacker cannot observe sub-millisecond timing from localhost.
+    # No patch available upstream; resolution blocked on the rsa crate maintainers.
+    { id = "RUSTSEC-2023-0071", reason = "Marvin Attack (timing side-channel in rsa) via Arti tor-key-forge. Local installer process only; no network timing oracle exposed. Advisory explicitly notes local use is safe. No patch available. Revisit on next Arti bump." },
+]
+
+[bans]
+# Warn on duplicate crate versions (don't hard-fail; Arti's dep tree naturally
+# pulls multiple versions of some utility crates).
+multiple-versions = "warn"
+# Wildcards from git-sourced deps in the SDK are expected; warn not deny.
+wildcards = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+# The W1TN3SS SDK and its transport crate live in the Itasha.Corp private org.
+allow-git = [
+    "https://github.com/46b-ETYKiAL/Itasha.Corp_S4F3-W1TN3SS.git",
+]
